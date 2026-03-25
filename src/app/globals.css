@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Outfit', sans-serif;
+  --font-display: 'Playfair Display', serif;
+
+  /* Brand (teal) */
+  --color-brand-50:  #f4fbfb;
+  --color-brand-100: #e0f5f5;
+  --color-brand-200: #a8e6e6;
+  --color-brand-300: #4db8b8;
+  --color-brand-400: #2e9090;
+  --color-brand-500: #217070;
+  --color-brand-600: #1a5454;
+  --color-brand-700: #134040;
+  --color-brand-800: #0f2e2e;
+  --color-brand-900: #0a1f1f;
+
+  /* Amber accent */
+  --color-amber-light: #ffecc4;
+  --color-amber:       #f5a623;
+
+  /* Neutrals */
+  --color-ink:        #0d1b1b;
+  --color-ink-2:      #2a3d3d;
+  --color-ink-3:      #4a6060;
+  --color-ink-4:      #7a9898;
+  --color-border:     #d8ecec;
+  --color-surface:    #f2f8f8;
+
+  /* Status */
+  --color-success:      #2da44e;
+  --color-success-light: #ddf4e4;
+  --color-danger:       #e5534b;
+  --color-danger-light: #fde8e7;
+
+  /* Shadows */
+  --shadow-card: 0 4px 20px rgba(13,31,31,0.08);
+  --shadow-lg:   0 12px 48px rgba(13,31,31,0.12);
+
+  /* Border radius */
+  --radius-xl:  14px;
+  --radius-2xl: 18px;
+  --radius-3xl: 24px;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background-color: var(--color-surface);
+  }
+}
