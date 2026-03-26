@@ -1,83 +1,122 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, use } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import StartScreen from '@/components/student/StartScreen'
 import TestScreen from '@/components/student/TestScreen'
 import ResultScreen from '@/components/student/ResultScreen'
-
-// Mock assessment — we'll replace with real Supabase fetch later
-const mockAssessment = {
-  title:         'Linear Equations in Two Variables',
-  subject:       'Mathematics',
-  classLevel:    'SS1',
-  teacherName:   'Ms. Adaeze',
-  questionCount: 3,
-  questions: [
-    {
-      type:    'mcq',
-      text:    'Solve for x: 2x + 5 = 13',
-      options: ['x = 3', 'x = 4', 'x = 5', 'x = 6'],
-      answer:  'B',
-      hint:    'Subtract 5 from both sides first, then divide.',
-      explanation: '2x + 5 = 13 → subtract 5 → 2x = 8 → divide by 2 → x = 4',
-    },
-    {
-      type:    'mcq',
-      text:    'If y = 3x − 2, what is the value of y when x = 5?',
-      options: ['y = 10', 'y = 11', 'y = 13', 'y = 15'],
-      answer:  'C',
-      hint:    'Substitute x = 5 directly into the equation.',
-      explanation: 'y = 3(5) − 2 = 15 − 2 = 13',
-    },
-    {
-      type:    'truefalse',
-      text:    'The equation y = 2x + 1 is a linear equation.',
-      options: [],
-      answer:  'True',
-      hint:    'Think about what makes an equation linear.',
-      explanation: 'A linear equation has no exponents greater than 1. y = 2x + 1 fits this — it\'s a straight line.',
-    },
-  ],
-}
+import Spinner from '@/components/ui/Spinner'
+import { submitAnswers } from '@/lib/actions/submissions'
 
 export default function TestPage({ params }) {
-  const [phase, setPhase] = useState('start')
+  // ✅ Unwrap params Promise first
+  const { slug } = use(params)
+
+  const [assessment,  setAssessment]  = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [notFound,    setNotFound]    = useState(false)
+  const [phase,       setPhase]       = useState('start')
   const [studentName, setStudentName] = useState('')
-  const [answers, setAnswers] = useState({})
+  const [answers,     setAnswers]     = useState({})
+  const [result,      setResult]      = useState(null)
+
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('assessments')
+        .select(`
+          *,
+          questions (
+            id, type, text, options,
+            answer, hint, explanation, order_index
+          )
+        `)
+        .eq('slug', slug)
+        .single()
+
+      if (error || !data) {
+        console.error('Load error:', error)
+        setNotFound(true)
+      } else {
+        data.questions.sort((a, b) => a.order_index - b.order_index)
+        setAssessment(data)
+      }
+      setLoading(false)
+    }
+    load()
+  }, [slug])
 
   const handleStart = (name) => {
     setStudentName(name)
     setPhase('test')
   }
 
-  const handleFinish = (finalAnswers) => {
+  const handleFinish = async (finalAnswers) => {
     setAnswers(finalAnswers)
+    const res = await submitAnswers({
+      assessmentId: assessment.id,
+      studentName,
+      answers:      finalAnswers,
+      questions:    assessment.questions,
+    })
+    setResult(res)
     setPhase('result')
   }
 
   const handleRetry = () => {
     setAnswers({})
+    setResult(null)
     setPhase('start')
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <Spinner className="w-8 h-8" />
+      </div>
+    )
+  }
+
+  if (notFound) {
+    return (
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="text-5xl">🔍</div>
+        <h1 className="font-display text-2xl font-bold text-ink">
+          Assessment not found
+        </h1>
+        <p className="text-sm text-ink-3 max-w-sm">
+          This link may be incorrect or the assessment may have been removed.
+          Check with your teacher.
+        </p>
+      </div>
+    )
   }
 
   return (
     <>
       {phase === 'start' && (
         <StartScreen
-          assessment={mockAssessment}
+          assessment={{
+            title:         assessment.title,
+            subject:       assessment.subject,
+            classLevel:    assessment.class_level,
+            teacherName:   'Your Teacher',
+            questionCount: assessment.questions.length,
+          }}
           onStart={handleStart}
         />
       )}
       {phase === 'test' && (
         <TestScreen
-          assessment={mockAssessment}
+          assessment={assessment}
           studentName={studentName}
           onFinish={handleFinish}
         />
       )}
       {phase === 'result' && (
         <ResultScreen
-          assessment={mockAssessment}
+          assessment={assessment}
           studentName={studentName}
           answers={answers}
           onRetry={handleRetry}

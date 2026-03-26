@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import StepSetup from './StepSetup'
 import StepQuestions from './StepQuestions'
 import StepShare from './StepShare'
@@ -12,21 +13,22 @@ const STEPS = [
   { number: 3, label: 'Share'     },
 ]
 
-export default function AssessmentWizard({ onFinish }) {
+export default function AssessmentWizard({ curriculum = 'uk' }) {
+  const router = useRouter()
   const [step, setStep] = useState(1)
 
   const [setupData, setSetupData] = useState({
-    subject:    '',
-    classLevel: '',
-    topic:      '',
-    title:      '',
+    subject: '', classLevel: '', topic: '', title: '',
   })
 
-  const [questions, setQuestions] = useState([])
+  const [questions,      setQuestions]      = useState([])
+  const [questionSource, setQuestionSource] = useState('manual') // 'manual' | 'ai' | 'bank'
 
   const updateSetup = (field, value) => {
     setSetupData((prev) => ({ ...prev, [field]: value }))
   }
+
+  const handleFinish = () => router.push('/dashboard')
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -38,11 +40,9 @@ export default function AssessmentWizard({ onFinish }) {
             <div className="flex flex-col items-center gap-1.5">
               <div className={cn(
                 'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors',
-                step === s.number
-                  ? 'bg-brand-800 text-white'
-                  : step > s.number
-                  ? 'bg-success text-white'
-                  : 'bg-border text-ink-4'
+                step === s.number  ? 'bg-brand-800 text-white' :
+                step > s.number   ? 'bg-success text-white'   :
+                                     'bg-border text-ink-4'
               )}>
                 {step > s.number ? '✓' : s.number}
               </div>
@@ -70,12 +70,14 @@ export default function AssessmentWizard({ onFinish }) {
             data={setupData}
             onChange={updateSetup}
             onNext={() => setStep(2)}
+            curriculum={curriculum}
           />
         )}
         {step === 2 && (
           <StepQuestions
             questions={questions}
             onChange={setQuestions}
+            onSourceChange={setQuestionSource}
             onNext={() => setStep(3)}
             onBack={() => setStep(1)}
           />
@@ -83,8 +85,10 @@ export default function AssessmentWizard({ onFinish }) {
         {step === 3 && (
           <StepShare
             data={{ ...setupData, questionCount: questions.length }}
+            questions={questions}
+            source={questionSource}
             onBack={() => setStep(2)}
-            onFinish={onFinish}
+            onFinish={handleFinish}
           />
         )}
       </div>

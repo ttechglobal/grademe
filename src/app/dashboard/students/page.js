@@ -1,102 +1,101 @@
+import { createClient } from '@/lib/supabase/server'
 import StudentsList from '@/components/dashboard/StudentsList'
 import { Users } from 'lucide-react'
 
-const mockStudents = [
-  {
-    id: '1',
-    name: 'Kelechi Okonkwo',
-    class: 'SS2',
-    testsCompleted: 5,
-    avgScore: 88,
-    lastActive: '25 Mar 2026',
-    submissions: [
-      { assessment: 'Quadratic Equations', score: 88, date: '25 Mar 2026' },
-      { assessment: 'Linear Equations',    score: 91, date: '20 Mar 2026' },
-      { assessment: 'Indices & Logs',      score: 84, date: '15 Mar 2026' },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Amara Chidinma',
-    class: 'SS1',
-    testsCompleted: 4,
-    avgScore: 72,
-    lastActive: '25 Mar 2026',
-    submissions: [
-      { assessment: 'Linear Equations',  score: 72, date: '25 Mar 2026' },
-      { assessment: 'Number Bases',      score: 68, date: '18 Mar 2026' },
-      { assessment: 'Sets & Venn',       score: 75, date: '12 Mar 2026' },
-    ],
-  },
-  {
-    id: '3',
-    name: 'Teniola Nwosu',
-    class: 'SS2',
-    testsCompleted: 3,
-    avgScore: 46,
-    lastActive: '24 Mar 2026',
-    submissions: [
-      { assessment: 'Quadratic Equations', score: 46, date: '24 Mar 2026' },
-      { assessment: 'Simultaneous Eq.',    score: 40, date: '17 Mar 2026' },
-      { assessment: 'Factorisation',       score: 52, date: '10 Mar 2026' },
-    ],
-  },
-  {
-    id: '4',
-    name: 'Babatunde Fashola',
-    class: 'SS1',
-    testsCompleted: 2,
-    avgScore: 61,
-    lastActive: '22 Mar 2026',
-    submissions: [
-      { assessment: 'Linear Equations', score: 61, date: '22 Mar 2026' },
-      { assessment: 'Number Bases',     score: 58, date: '15 Mar 2026' },
-    ],
-  },
-  {
-    id: '5',
-    name: 'Oluwaseun Adeyemi',
-    class: 'JSS3',
-    testsCompleted: 3,
-    avgScore: 61,
-    lastActive: '24 Mar 2026',
-    submissions: [
-      { assessment: 'Photosynthesis',  score: 61, date: '24 Mar 2026' },
-      { assessment: 'Cell Structure',  score: 55, date: '16 Mar 2026' },
-      { assessment: 'Reproduction',   score: 66, date: '9 Mar 2026'  },
-    ],
-  },
-  {
-    id: '6',
-    name: 'Ngozi Eze',
-    class: 'SS3',
-    testsCompleted: 6,
-    avgScore: 79,
-    lastActive: '23 Mar 2026',
-    submissions: [
-      { assessment: 'Nigerian Constitution', score: 81, date: '23 Mar 2026' },
-      { assessment: 'Federalism',            score: 78, date: '14 Mar 2026' },
-      { assessment: 'Electoral Process',     score: 77, date: '7 Mar 2026'  },
-    ],
-  },
-]
+export default async function StudentsPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
-export default function StudentsPage() {
+  // Get all submissions for this teacher's assessments
+  const { data: submissions } = await supabase
+    .from('submissions')
+    .select(`
+      id,
+      student_name,
+      score,
+      total,
+      completed_at,
+      assessment_id,
+      assessments!inner (
+        id,
+        title,
+        class_level,
+        subject,
+        teacher_id
+      )
+    `)
+    .eq('assessments.teacher_id', user.id)
+    .order('completed_at', { ascending: false })
+
+  // Group by student name to build student profiles
+  const studentMap = {}
+  for (const sub of submissions ?? []) {
+    const name = sub.student_name
+    if (!studentMap[name]) {
+      studentMap[name] = {
+        id:             name,
+        name,
+        class:          sub.assessments?.class_level?.toUpperCase() ?? '—',
+        testsCompleted: 0,
+        totalScore:     0,
+        lastActive:     sub.completed_at,
+        submissions:    [],
+      }
+    }
+    studentMap[name].testsCompleted++
+    studentMap[name].totalScore += sub.score ?? 0
+    studentMap[name].submissions.push({
+      assessment: sub.assessments?.title ?? '—',
+      score:      sub.score ?? 0,
+      date:       new Date(sub.completed_at).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'short', year: 'numeric',
+      }),
+    })
+  }
+
+  const students = Object.values(studentMap).map((s) => ({
+    ...s,
+    avgScore: s.testsCompleted > 0
+      ? Math.round(s.totalScore / s.testsCompleted)
+      : 0,
+    lastActive: new Date(s.lastActive).toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    }),
+  }))
+
   return (
     <div className="flex flex-col gap-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Users size={22} className="text-brand-500" />
-            <h1 className="font-display text-3xl font-bold text-ink">Students</h1>
+            <h1 className="font-display text-3xl font-bold text-ink">
+              Students
+            </h1>
           </div>
           <p className="text-ink-3 text-sm">
-            Track every student's progress across all assessments
+            Track every student&apos;s progress across all assessments
           </p>
+        </div>
+        <div className="bg-white border border-border rounded-2xl px-5 py-3 text-center shadow-card">
+          <p className="font-display text-2xl font-bold text-brand-700">
+            {students.length}
+          </p>
+          <p className="text-xs text-ink-4">Total Students</p>
         </div>
       </div>
 
-      <StudentsList students={mockStudents} />
+      {students.length === 0 ? (
+        <div className="bg-white border border-dashed border-border rounded-2xl p-12 text-center">
+          <p className="text-4xl mb-3">👥</p>
+          <p className="font-semibold text-ink mb-1">No students yet</p>
+          <p className="text-sm text-ink-3">
+            Students will appear here once they complete an assessment.
+          </p>
+        </div>
+      ) : (
+        <StudentsList students={students} />
+      )}
     </div>
   )
 }

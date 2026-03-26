@@ -1,10 +1,17 @@
-'use client'
-
+import { createClient } from '@/lib/supabase/server'
 import AssessmentWizard from '@/components/assessment/AssessmentWizard'
-import { useRouter } from 'next/navigation'
 
-export default function NewAssessmentPage() {
-  const router = useRouter()
+export default async function NewAssessmentPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('curriculum')
+    .eq('id', user.id)
+    .single()
+
+  const curriculum = profile?.curriculum ?? 'uk'
 
   return (
     <div className="flex flex-col gap-6">
@@ -16,7 +23,7 @@ export default function NewAssessmentPage() {
           Fill in the details, add your questions, then share with students.
         </p>
       </div>
-      <AssessmentWizard onFinish={() => router.push('/dashboard')} />
+      <AssessmentWizard curriculum={curriculum} />
     </div>
   )
 }

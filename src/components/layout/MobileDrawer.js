@@ -4,7 +4,8 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { X, HelpCircle,
+import {
+  X, HelpCircle,
   LayoutDashboard, ClipboardList,
   Users, BarChart2, BookOpen,
   Sparkles, Link2, Settings,
@@ -14,24 +15,24 @@ const navItems = [
   {
     section: 'Overview',
     links: [
-      { label: 'Dashboard',     href: '/dashboard',             icon: LayoutDashboard },
-      { label: 'Assessments',   href: '/dashboard/assessments', icon: ClipboardList, badge: '8' },
-      { label: 'Students',      href: '/dashboard/students',    icon: Users },
-      { label: 'Analytics',     href: '/dashboard/analytics',   icon: BarChart2 },
+      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { label: 'Assessments', href: '/dashboard/assessments', icon: ClipboardList, badge: '8' },
+      { label: 'Students', href: '/dashboard/students', icon: Users },
+      { label: 'Analytics', href: '/dashboard/analytics', icon: BarChart2 },
     ],
   },
   {
     section: 'Tools',
     links: [
-      { label: 'Question Bank', href: '/dashboard/questions',   icon: BookOpen },
-      { label: 'AI Import',     href: '/dashboard/ai-import',   icon: Sparkles },
-      { label: 'Share Links',   href: '/dashboard/links',       icon: Link2 },
+      { label: 'Question Bank', href: '/dashboard/questions', icon: BookOpen },
+      { label: 'Import Questions', href: '/dashboard/ai-import', icon: Sparkles },
+      { label: 'Share Links', href: '/dashboard/links', icon: Link2 },
     ],
   },
   {
     section: 'Account',
     links: [
-      { label: 'Settings',      href: '/dashboard/settings',    icon: Settings },
+      { label: 'Settings', href: '/dashboard/settings', icon: Settings },
     ],
   },
 ]

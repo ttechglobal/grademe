@@ -7,7 +7,7 @@ import { useState } from 'react'
 
 function ScoreRing({ score }) {
   const radius = 40
-  const circ = 2 * Math.PI * radius
+  const circ   = 2 * Math.PI * radius
   const offset = circ - (score / 100) * circ
 
   return (
@@ -37,6 +37,40 @@ function ScoreRing({ score }) {
   )
 }
 
+// Renders explanation with line-by-line formatting for maths
+function ExplanationBlock({ text }) {
+  if (!text) return null
+
+  const lines = text.split('\n').filter((l) => l.trim().length > 0)
+
+  return (
+    <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 mt-3">
+      <p className="font-semibold text-brand-700 text-xs uppercase tracking-wide mb-2">
+        📖 Explanation
+      </p>
+      <div className="flex flex-col gap-1">
+        {lines.map((line, i) => {
+          const isAnswer = line.toLowerCase().startsWith('answer:')
+          const isStep   = line.toLowerCase().startsWith('step')
+          return (
+            <p
+              key={i}
+              className={cn(
+                'text-sm leading-relaxed',
+                isAnswer ? 'font-bold text-brand-900 mt-1 pt-1 border-t border-brand-200' :
+                isStep   ? 'text-brand-800 font-medium' :
+                           'text-brand-700'
+              )}
+            >
+              {line}
+            </p>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function ReviewCard({ question, index, studentAnswer, isCorrect }) {
   const [open, setOpen] = useState(false)
 
@@ -50,7 +84,7 @@ function ReviewCard({ question, index, studentAnswer, isCorrect }) {
           ? <CheckCircle2 size={18} className="text-success flex-shrink-0" />
           : <XCircle size={18} className="text-danger flex-shrink-0" />
         }
-        <span className="flex-1 text-sm font-medium text-ink truncate">
+        <span className="flex-1 text-sm font-medium text-ink line-clamp-2">
           Q{index + 1}: {question.text}
         </span>
         {open
@@ -62,28 +96,32 @@ function ReviewCard({ question, index, studentAnswer, isCorrect }) {
       {open && (
         <div className="px-5 pb-5 border-t border-border flex flex-col gap-3 pt-4">
 
-          {/* Options */}
+          {/* MCQ options */}
           {question.type === 'mcq' && (
             <div className="flex flex-col gap-2">
               {question.options.map((opt, i) => {
-                const letter = String.fromCharCode(65 + i)
-                const isAnswer  = letter === question.answer
-                const isStudent = letter === studentAnswer
+                const optLetter = opt.charAt(0)
+                const letter    = String.fromCharCode(65 + i)
+                const isAnswer  = optLetter === question.answer || letter === question.answer
+                const isStudent = optLetter === studentAnswer   || letter === studentAnswer
+
+                let styleClass = 'border-border text-ink-3'
+                if (isAnswer && isStudent)  styleClass = 'border-success bg-success-light text-success'
+                if (isAnswer && !isStudent) styleClass = 'border-success bg-success-light text-success'
+                if (!isAnswer && isStudent) styleClass = 'border-danger bg-danger-light text-danger'
+
                 return (
                   <div
                     key={i}
                     className={cn(
                       'flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm',
-                      isAnswer && isStudent && 'border-success bg-success-light text-success',
-                      isAnswer && !isStudent && 'border-success bg-success-light text-success',
-                      !isAnswer && isStudent && 'border-danger bg-danger-light text-danger',
-                      !isAnswer && !isStudent && 'border-border text-ink-3'
+                      styleClass
                     )}
                   >
-                    <span className="font-bold w-5 flex-shrink-0">{letter}</span>
-                    <span className="flex-1">{opt}</span>
-                    {isAnswer  && <span className="text-xs font-bold">✓ Correct</span>}
-                    {!isAnswer && isStudent && <span className="text-xs font-bold">Your answer</span>}
+                    <span className="font-bold w-5 flex-shrink-0">{optLetter || letter}</span>
+                    <span className="flex-1">{opt.length > 2 ? opt.slice(2).trim() : opt}</span>
+                    {isAnswer  && <span className="text-xs font-bold ml-auto">✓ Correct</span>}
+                    {!isAnswer && isStudent && <span className="text-xs font-bold ml-auto">Your answer</span>}
                   </div>
                 )
               })}
@@ -109,13 +147,8 @@ function ReviewCard({ question, index, studentAnswer, isCorrect }) {
             </div>
           )}
 
-          {/* Explanation */}
-          {question.explanation && (
-            <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 text-sm text-brand-800 leading-relaxed">
-              <p className="font-semibold mb-1 text-brand-700">📖 Explanation</p>
-              {question.explanation}
-            </div>
-          )}
+          {/* Explanation — line-by-line */}
+          <ExplanationBlock text={question.explanation} />
 
         </div>
       )}
@@ -124,9 +157,9 @@ function ReviewCard({ question, index, studentAnswer, isCorrect }) {
 }
 
 function getGrade(score) {
-  if (score >= 75) return { label: 'Excellent work! 🎉',  color: 'text-success' }
-  if (score >= 50) return { label: 'Good effort! Keep going 💪', color: 'text-amber' }
-  return { label: 'Keep practising — you\'ll get there! 📚', color: 'text-danger' }
+  if (score >= 75) return { label: 'Excellent work! 🎉',                    color: 'text-success' }
+  if (score >= 50) return { label: 'Good effort! Keep going 💪',            color: 'text-amber'   }
+  return             { label: "Keep practising — you'll get there! 📚", color: 'text-danger'  }
 }
 
 export default function ResultScreen({ assessment, studentName, answers, onRetry }) {
@@ -152,11 +185,9 @@ export default function ResultScreen({ assessment, studentName, answers, onRetry
         <ScoreRing score={score} />
         <div className="text-center">
           <p className="font-display text-2xl font-bold text-white">{studentName}</p>
-          <p className={cn('text-sm font-medium mt-1', grade.color === 'text-success' ? 'text-brand-200' : 'text-white/70')}>
-            {grade.label}
-          </p>
+          <p className="text-sm font-medium mt-1 text-white/70">{grade.label}</p>
         </div>
-        <div className="flex gap-4 mt-2">
+        <div className="flex gap-6 mt-2">
           <div className="text-center">
             <p className="font-display text-3xl font-bold text-white">{correct}</p>
             <p className="text-xs text-white/50 mt-0.5">Correct</p>
@@ -176,13 +207,14 @@ export default function ResultScreen({ assessment, studentName, answers, onRetry
 
       {/* Review section */}
       <div className="flex-1 max-w-xl mx-auto w-full px-4 py-6 flex flex-col gap-4">
-        <h2 className="font-display text-xl font-bold text-ink">
-          Review Answers
-        </h2>
+        <h2 className="font-display text-xl font-bold text-ink">Review Answers</h2>
+        <p className="text-sm text-ink-3 -mt-2">
+          Click any question to see the explanation
+        </p>
 
         {questions.map((q, i) => {
           const studentAnswer = answers[i]
-          const isCorrect = studentAnswer?.trim().toLowerCase() === q.answer.trim().toLowerCase()
+          const isCorrect     = studentAnswer?.trim().toLowerCase() === q.answer.trim().toLowerCase()
           return (
             <ReviewCard
               key={i}

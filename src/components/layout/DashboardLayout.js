@@ -1,32 +1,39 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import BottomNav from './BottomNav'
 
-const mockUser = {
-  name: 'Adaeze Obi',
-  role: 'Mathematics Teacher',
-}
+export default async function DashboardLayout({ children }) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
-export default function DashboardLayout({ children }) {
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, role, school')
+    .eq('id', user.id)
+    .single()
+
+  const currentUser = {
+    name:  profile?.full_name ?? user.email,
+    role:  profile?.role      ?? 'Teacher',
+    email: user.email,
+  }
+
   return (
     <div className="flex min-h-screen bg-surface">
-
-      {/* Sidebar — desktop only */}
       <div className="hidden md:flex">
         <Sidebar />
       </div>
-
-      {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Topbar user={mockUser} />
+        <Topbar user={currentUser} />
         <main className="flex-1 p-4 md:p-6 overflow-y-auto pb-24 md:pb-6">
           {children}
         </main>
       </div>
-
-      {/* Bottom nav — mobile only */}
       <BottomNav />
-
     </div>
   )
 }
