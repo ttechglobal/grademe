@@ -2,23 +2,23 @@
 
 import { useState, useEffect, use } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import StartScreen from '@/components/student/StartScreen'
-import TestScreen from '@/components/student/TestScreen'
+import StartScreen  from '@/components/student/StartScreen'
+import TestScreen   from '@/components/student/TestScreen'
 import ResultScreen from '@/components/student/ResultScreen'
-import Spinner from '@/components/ui/Spinner'
+import ReviewScreen from '@/components/student/ReviewScreen'
+import Spinner      from '@/components/ui/Spinner'
 import { submitAnswers } from '@/lib/actions/submissions'
 
 export default function TestPage({ params }) {
-  // ✅ Unwrap params Promise first
   const { slug } = use(params)
 
   const [assessment,  setAssessment]  = useState(null)
   const [loading,     setLoading]     = useState(true)
   const [notFound,    setNotFound]    = useState(false)
-  const [phase,       setPhase]       = useState('start')
+  const [phase,       setPhase]       = useState('start')  // start | test | result | review
   const [studentName, setStudentName] = useState('')
   const [answers,     setAnswers]     = useState({})
-  const [result,      setResult]      = useState(null)
+  const [results,     setResults]     = useState([])
 
   useEffect(() => {
     async function load() {
@@ -36,7 +36,6 @@ export default function TestPage({ params }) {
         .single()
 
       if (error || !data) {
-        console.error('Load error:', error)
         setNotFound(true)
       } else {
         data.questions.sort((a, b) => a.order_index - b.order_index)
@@ -54,22 +53,29 @@ export default function TestPage({ params }) {
 
   const handleFinish = async (finalAnswers) => {
     setAnswers(finalAnswers)
-    const res = await submitAnswers({
+    await submitAnswers({
       assessmentId: assessment.id,
       studentName,
       answers:      finalAnswers,
       questions:    assessment.questions,
     })
-    setResult(res)
     setPhase('result')
   }
 
-  const handleRetry = () => {
-    setAnswers({})
-    setResult(null)
-    setPhase('start')
+  const handleReview = (resultData) => {
+    setResults(resultData)
+    setPhase('review')
   }
 
+  const handleDone = () => {
+    // Reset to start — student can close the tab or start again
+    setPhase('start')
+    setAnswers({})
+    setResults([])
+    setStudentName('')
+  }
+
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
@@ -78,6 +84,7 @@ export default function TestPage({ params }) {
     )
   }
 
+  // ── Not found ────────────────────────────────────────────────────────────
   if (notFound) {
     return (
       <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-4 p-6 text-center">
@@ -85,7 +92,7 @@ export default function TestPage({ params }) {
         <h1 className="font-display text-2xl font-bold text-ink">
           Assessment not found
         </h1>
-        <p className="text-sm text-ink-3 max-w-sm">
+        <p className="text-sm text-ink-3 max-w-sm leading-relaxed">
           This link may be incorrect or the assessment may have been removed.
           Check with your teacher.
         </p>
@@ -107,6 +114,7 @@ export default function TestPage({ params }) {
           onStart={handleStart}
         />
       )}
+
       {phase === 'test' && (
         <TestScreen
           assessment={assessment}
@@ -114,12 +122,22 @@ export default function TestPage({ params }) {
           onFinish={handleFinish}
         />
       )}
+
       {phase === 'result' && (
         <ResultScreen
           assessment={assessment}
           studentName={studentName}
           answers={answers}
-          onRetry={handleRetry}
+          onReview={handleReview}
+          onDone={handleDone}
+        />
+      )}
+
+      {phase === 'review' && (
+        <ReviewScreen
+          results={results}
+          assessment={assessment}
+          onDone={handleDone}
         />
       )}
     </>
