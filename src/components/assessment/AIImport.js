@@ -2,47 +2,51 @@
 
 import { useState } from 'react'
 import Button from '@/components/ui/Button'
+import MathRenderer from '@/components/ui/MathRenderer'
 import { Copy, CheckCheck, Sparkles, AlertCircle, GripVertical, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const PROMPT = `You are an expert question extractor and educator. Extract ALL questions from the content I give you and return them as a JSON array.
+const PROMPT = `You are an expert question extractor and educator. Extract ALL questions from the content and return a JSON array.
 
-STRICT OUTPUT RULES:
-- Return ONLY a valid JSON array — no introduction, no explanation, no markdown, no code blocks
-- The array must start with [ and end with ]
-- Every question MUST have 4 answer options (A, B, C, D)
+CRITICAL RULES:
+- Return ONLY a valid JSON array — no text before or after, no markdown
+- Every single question MUST have exactly 4 answer options (A, B, C, D)
+- Options must be SHUFFLED — correct answer should not always be A
+- For maths: write equations clearly in plain text (e.g. "x^2 + 3x + 2 = 0", "3/4", "sqrt(16)")
 
-QUESTION FORMAT:
+FORMAT (follow exactly):
 [
   {
-    "question": "The full question text exactly as written",
+    "question": "Full question text",
     "type": "mcq",
-    "options": ["A. first option", "B. second option", "C. third option", "D. fourth option"],
-    "answer": "A",
-    "hint": "A short nudge that helps without giving away the answer",
-    "explanation": "Step 1: ...\nStep 2: ...\nAnswer: ..."
+    "options": ["A. option", "B. option", "C. option", "D. option"],
+    "answer": "B",
+    "hint": "A helpful nudge without giving away the answer",
+    "explanation": "Where relevant:\\nStep 1: ...\\nStep 2: ...\\nAnswer: ..."
   }
 ]
 
-EXPLANATION FORMATTING (critical):
+OPTIONS RULES:
+- Always 4 options: A, B, C, D
+- SHUFFLE them — correct answer position should vary (sometimes A, sometimes B, C, or D)
+- For fill-in questions: convert to MCQ — use correct answer + 3 plausible wrong answers
+- For true/false: A. True  B. False  C. Cannot be determined  D. None of the above
+- "answer" must be the letter ONLY: "A", "B", "C", or "D"
+
+MATHS FORMATTING:
+- Fractions: write as "3/4" or "numerator/denominator"
+- Exponents: write as "x^2" or "2^3"
+- Square root: write as "sqrt(16)"
+- Equations: write clearly e.g. "2x + 5 = 13"
+
+EXPLANATION FORMAT:
 - Each step on its own line using \\n
-- For maths: show every calculation step
-- Use plain text: write x^2 not symbols
-- End with: Answer: [final answer]
+- For maths: show EVERY calculation step
+- Keep it SHORT — max 6 lines
+- End with "Answer: [correct answer]"
 - Do NOT write paragraphs
 
-GOOD MATHS EXPLANATION:
-"Step 1: Write the equation: 2x + 5 = 13\nStep 2: Subtract 5 from both sides: 2x = 8\nStep 3: Divide by 2: x = 4\nAnswer: x = 4"
-
-OPTIONS RULES:
-- Always provide exactly 4 options: A, B, C, D
-- For fill-in: correct answer = one option, create 3 plausible wrong answers
-- For true/false: A. True  B. False  C. Cannot be determined  D. None of the above
-- "answer" field must be ONLY the letter: A, B, C, or D
-
-Extract EVERY question. Return ONLY the JSON array.
-
-Content to extract from:`
+Extract EVERY question. Return ONLY the JSON array.`
 
 export default function AIImport({ onImport }) {
   const [pasted,    setPasted]    = useState('')
@@ -65,11 +69,7 @@ export default function AIImport({ onImport }) {
     setError('')
     setLoading(true)
     try {
-      const clean = pasted
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim()
-
+      const clean = pasted.replace(/```json/gi, '').replace(/```/g, '').trim()
       const match = clean.match(/\[[\s\S]*\]/)
       if (!match) throw new Error('No JSON array found')
 
@@ -79,25 +79,32 @@ export default function AIImport({ onImport }) {
       const mapped = result
         .map((q) => ({
           id:          Math.random().toString(36).slice(2),
-          type:        'mcq', // always MCQ
+          type:        'mcq',
           text:        q.question || q.text || '',
           options:     Array.isArray(q.options) && q.options.length === 4
                          ? q.options
-                         : ['A. Option A', 'B. Option B', 'C. Option C', 'D. Option D'],
-          answer:      q.answer || 'A',
-          hint:        q.hint || '',
+                         : generateFallbackOptions(q.answer),
+          answer:      q.answer   || 'A',
+          hint:        q.hint        || '',
           explanation: q.explanation || '',
         }))
         .filter((q) => q.text.trim().length > 0)
 
-      if (mapped.length === 0) throw new Error('No valid questions')
+      if (mapped.length === 0) throw new Error('No valid questions found')
 
       setParsed(mapped)
       setSelected(new Set(mapped.map((q) => q.id)))
     } catch {
-      setError('Could not parse the response. Make sure you copied the full JSON from the AI.')
+      setError('Could not parse the AI response. Make sure you copied the full JSON response.')
     }
     setLoading(false)
+  }
+
+  const generateFallbackOptions = (answer) => {
+    // Fallback if AI didn't generate options
+    const correct = answer || 'A'
+    const letters = ['A', 'B', 'C', 'D']
+    return letters.map((l) => `${l}. ${l === correct ? 'Correct answer' : `Option ${l}`}`)
   }
 
   const toggleSelect = (id) => {
@@ -141,17 +148,17 @@ export default function AIImport({ onImport }) {
     setConfirmed(true)
   }
 
-  // Step 1 — paste
+  // ── Step 1: paste ─────────────────────────────────────────────────────────
   if (parsed.length === 0) {
     return (
       <div className="flex flex-col gap-5">
         <div className="bg-brand-50 border border-brand-200 rounded-2xl p-5 flex flex-col gap-3">
           <p className="font-semibold text-brand-800 text-sm">How it works</p>
           {[
-            '① Open ChatGPT, Gemini, or Claude',
-            '② Upload your image / PDF OR paste your questions text',
-            '③ Paste the prompt below at the end of your message',
-            '④ Copy the AI JSON response and paste below',
+            '① Open ChatGPT, Gemini, or Claude in a new tab',
+            '② Upload your image / PDF OR paste your questions text into the AI',
+            '③ Then paste the prompt below at the end of your message and send',
+            '④ Copy the AI JSON response and paste it below',
           ].map((s, i) => (
             <p key={i} className="text-xs text-brand-700 leading-relaxed">{s}</p>
           ))}
@@ -167,7 +174,7 @@ export default function AIImport({ onImport }) {
               }
             </Button>
           </div>
-          <div className="bg-surface border border-border rounded-xl p-3 text-xs font-mono text-ink-3 leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap">
+          <div className="bg-surface border border-border rounded-xl p-3 text-xs font-mono text-ink-3 leading-relaxed max-h-36 overflow-y-auto whitespace-pre-wrap">
             {PROMPT}
           </div>
         </div>
@@ -177,7 +184,7 @@ export default function AIImport({ onImport }) {
           <textarea
             value={pasted}
             onChange={(e) => { setPasted(e.target.value); setError('') }}
-            placeholder={'[\n  {\n    "question": "...",\n    "type": "mcq",\n    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],\n    "answer": "A",\n    "hint": "...",\n    "explanation": "Step 1: ...\\nStep 2: ...\\nAnswer: ..."\n  }\n]'}
+            placeholder={'Paste the full AI JSON response here...\n[\n  {\n    "question": "...",\n    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],\n    "answer": "B"\n  }\n]'}
             rows={10}
             className="w-full px-4 py-3 text-sm font-mono bg-white border border-border rounded-xl outline-none focus:border-brand-500 resize-none placeholder:text-ink-4"
           />
@@ -197,23 +204,26 @@ export default function AIImport({ onImport }) {
     )
   }
 
-  // Step 2 — Review, select, reorder
+  // ── Step 2: review & select ───────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4">
-
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="font-semibold text-ink text-sm">
             {parsed.length} question{parsed.length !== 1 ? 's' : ''} extracted
           </p>
-          <p className="text-xs text-ink-4 mt-0.5">Select the ones you want · drag to reorder</p>
+          <p className="text-xs text-ink-4 mt-0.5">
+            Select the ones you want · drag to reorder
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleShuffle}
             className={cn(
               'text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors',
-              shuffled ? 'bg-success-light text-success border-success' : 'bg-surface border-border text-ink-3 hover:border-brand-400'
+              shuffled
+                ? 'bg-success-light text-success border-success'
+                : 'bg-surface border-border text-ink-3 hover:border-brand-400'
             )}
           >
             {shuffled ? '✓ Shuffled!' : '🔀 Shuffle'}
@@ -249,7 +259,6 @@ export default function AIImport({ onImport }) {
               )}
             >
               <GripVertical size={16} className="text-ink-4 flex-shrink-0 mt-0.5" />
-
               <button
                 onClick={() => toggleSelect(q.id)}
                 className={cn(
@@ -259,15 +268,16 @@ export default function AIImport({ onImport }) {
               >
                 {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
               </button>
-
               <div className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                 {i + 1}
               </div>
-
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-ink leading-relaxed">{q.text}</p>
+                {/* Use MathRenderer for question text */}
+                <p className="text-sm font-medium text-ink leading-relaxed">
+                  <MathRenderer text={q.text} />
+                </p>
 
-                {/* Always show MCQ options */}
+                {/* Options with math rendering */}
                 {q.options?.length > 0 && (
                   <div className="mt-2 flex flex-col gap-1">
                     {q.options.map((opt, oi) => {
@@ -281,17 +291,14 @@ export default function AIImport({ onImport }) {
                             isAnswer ? 'bg-success-light text-success font-semibold' : 'text-ink-4'
                           )}
                         >
-                          {opt} {isAnswer && '✓'}
+                          <MathRenderer text={opt} /> {isAnswer && '✓'}
                         </p>
                       )
                     })}
                   </div>
                 )}
 
-                {q.hint && (
-                  <p className="text-xs text-amber mt-1.5">💡 {q.hint}</p>
-                )}
-
+                {q.hint && <p className="text-xs text-amber mt-1.5">💡 {q.hint}</p>}
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-[10px] bg-surface border border-border rounded px-1.5 py-0.5 text-ink-4">mcq</span>
                   {q.explanation && <span className="text-[10px] text-brand-500">📖 Explanation</span>}

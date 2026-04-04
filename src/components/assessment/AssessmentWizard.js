@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import StepSetup from './StepSetup'
+import StepSetup     from './StepSetup'
 import StepQuestions from './StepQuestions'
-import StepShare from './StepShare'
+import StepShare     from './StepShare'
 import { cn } from '@/lib/utils'
 
 const STEPS = [
@@ -18,17 +18,19 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   const [step, setStep] = useState(1)
 
   const [setupData, setSetupData] = useState({
-    subject: '', classLevel: '', topic: '', title: '',
+    subject:        '',
+    classLevel:     '',
+    assessmentType: '', // 'assignment' | 'quiz' | 'test'
+    title:          '',
+    questionMode:   'mcq', // always mcq for now
   })
 
   const [questions,      setQuestions]      = useState([])
-  const [questionSource, setQuestionSource] = useState('manual') // 'manual' | 'ai' | 'bank'
+  const [questionSource, setQuestionSource] = useState('manual')
 
   const updateSetup = (field, value) => {
     setSetupData((prev) => ({ ...prev, [field]: value }))
   }
-
-  const handleFinish = () => router.push('/dashboard')
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -41,8 +43,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
               <div className={cn(
                 'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors',
                 step === s.number  ? 'bg-brand-800 text-white' :
-                step > s.number   ? 'bg-success text-white'   :
-                                     'bg-border text-ink-4'
+                step > s.number   ? 'bg-success text-white'   : 'bg-border text-ink-4'
               )}>
                 {step > s.number ? '✓' : s.number}
               </div>
@@ -78,6 +79,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             questions={questions}
             onChange={setQuestions}
             onSourceChange={setQuestionSource}
+            setupData={setupData}
             onNext={() => setStep(3)}
             onBack={() => setStep(1)}
           />
@@ -88,7 +90,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             questions={questions}
             source={questionSource}
             onBack={() => setStep(2)}
-            onFinish={handleFinish}
+            onFinish={() => router.push('/dashboard/assessments')}
           />
         )}
       </div>

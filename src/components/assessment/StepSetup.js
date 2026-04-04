@@ -1,81 +1,30 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
+import Spinner from '@/components/ui/Spinner'
+import Link from 'next/link'
 import { BookOpen } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
-const SUBJECTS = [
-  { value: '',            label: 'Select a subject...' },
-  { value: 'mathematics', label: 'Mathematics'         },
-  { value: 'english',     label: 'English Language'    },
-  { value: 'biology',     label: 'Biology'             },
-  { value: 'chemistry',   label: 'Chemistry'           },
-  { value: 'physics',     label: 'Physics'             },
-  { value: 'government',  label: 'Government'          },
-  { value: 'economics',   label: 'Economics'           },
-  { value: 'literature',  label: 'Literature'          },
-  { value: 'geography',   label: 'Geography'           },
-  { value: 'history',     label: 'History'             },
+const ALL_SUBJECTS = [
+  'Mathematics', 'English Language', 'Biology', 'Chemistry',
+  'Physics', 'Government', 'Economics', 'Literature',
+  'Geography', 'History', 'Further Mathematics', 'Agricultural Science',
+  'Computer Science', 'French', 'Music', 'Physical Education',
+  'Religious Studies', 'Business Studies', 'Accounting', 'Art',
 ]
 
 const CLASSES_BY_CURRICULUM = {
-  uk: [
-    { value: '',       label: 'Select a class...' },
-    { value: 'year1',  label: 'Year 1'            },
-    { value: 'year2',  label: 'Year 2'            },
-    { value: 'year3',  label: 'Year 3'            },
-    { value: 'year4',  label: 'Year 4'            },
-    { value: 'year5',  label: 'Year 5'            },
-    { value: 'year6',  label: 'Year 6'            },
-    { value: 'year7',  label: 'Year 7'            },
-    { value: 'year8',  label: 'Year 8'            },
-    { value: 'year9',  label: 'Year 9'            },
-    { value: 'year10', label: 'Year 10'           },
-    { value: 'year11', label: 'Year 11'           },
-    { value: 'year12', label: 'Year 12'           },
-    { value: 'year13', label: 'Year 13'           },
-  ],
-  us: [
-    { value: '',        label: 'Select a class...' },
-    { value: 'kinder',  label: 'Kindergarten'      },
-    { value: 'grade1',  label: 'Grade 1'           },
-    { value: 'grade2',  label: 'Grade 2'           },
-    { value: 'grade3',  label: 'Grade 3'           },
-    { value: 'grade4',  label: 'Grade 4'           },
-    { value: 'grade5',  label: 'Grade 5'           },
-    { value: 'grade6',  label: 'Grade 6'           },
-    { value: 'grade7',  label: 'Grade 7'           },
-    { value: 'grade8',  label: 'Grade 8'           },
-    { value: 'grade9',  label: 'Grade 9'           },
-    { value: 'grade10', label: 'Grade 10'          },
-    { value: 'grade11', label: 'Grade 11'          },
-    { value: 'grade12', label: 'Grade 12'          },
-  ],
-  nigerian: [
-    { value: '',     label: 'Select a class...' },
-    { value: 'jss1', label: 'JSS 1'             },
-    { value: 'jss2', label: 'JSS 2'             },
-    { value: 'jss3', label: 'JSS 3'             },
-    { value: 'ss1',  label: 'SS 1'              },
-    { value: 'ss2',  label: 'SS 2'              },
-    { value: 'ss3',  label: 'SS 3'              },
-  ],
-  international: [
-    { value: '',         label: 'Select a class...' },
-    { value: 'pyp1',     label: 'PYP 1'             },
-    { value: 'pyp2',     label: 'PYP 2'             },
-    { value: 'pyp3',     label: 'PYP 3'             },
-    { value: 'pyp4',     label: 'PYP 4'             },
-    { value: 'pyp5',     label: 'PYP 5'             },
-    { value: 'myp1',     label: 'MYP 1'             },
-    { value: 'myp2',     label: 'MYP 2'             },
-    { value: 'myp3',     label: 'MYP 3'             },
-    { value: 'myp4',     label: 'MYP 4'             },
-    { value: 'myp5',     label: 'MYP 5'             },
-    { value: 'dp_year1', label: 'DP Year 1'         },
-    { value: 'dp_year2', label: 'DP Year 2'         },
-  ],
+  uk:            ['Year 1','Year 2','Year 3','Year 4','Year 5','Year 6','Year 7','Year 8','Year 9','Year 10','Year 11','Year 12','Year 13'],
+  us:            ['Kindergarten','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6','Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12'],
+  nigerian:      ['JSS 1','JSS 2','JSS 3','SS 1','SS 2','SS 3'],
+  international: ['PYP 1','PYP 2','PYP 3','PYP 4','PYP 5','MYP 1','MYP 2','MYP 3','MYP 4','MYP 5','DP Year 1','DP Year 2'],
+  india:         ['Class 1','Class 2','Class 3','Class 4','Class 5','Class 6','Class 7','Class 8','Class 9','Class 10','Class 11','Class 12'],
+  other:         ['Level 1','Level 2','Level 3','Level 4','Level 5','Level 6'],
 }
 
 const CURRICULUM_LABELS = {
@@ -83,17 +32,91 @@ const CURRICULUM_LABELS = {
   us:            'US (Kindergarten–Grade 12)',
   nigerian:      'Nigerian (JSS1–SS3)',
   international: 'International IB',
+  india:         'Indian (Class 1–12)',
+  other:         'Other / Custom',
 }
 
+const ASSESSMENT_TYPES = [
+  {
+    id:    'assignment',
+    label: 'Assignment',
+    desc:  'Homework given to students to complete at home',
+    icon:  '📝',
+  },
+  {
+    id:    'quiz',
+    label: 'Quiz',
+    desc:  'A quick in-class check of understanding',
+    icon:  '⚡',
+  },
+  {
+    id:    'test',
+    label: 'Test',
+    desc:  'A more formal evaluation',
+    icon:  '📋',
+  },
+]
+
 export default function StepSetup({ data, onChange, onNext, curriculum = 'uk' }) {
-  const isValid   = data.subject && data.classLevel && data.topic.trim()
-  const classes   = CLASSES_BY_CURRICULUM[curriculum] ?? CLASSES_BY_CURRICULUM.uk
-  const currLabel = CURRICULUM_LABELS[curriculum] ?? 'UK'
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) { setLoading(false); return }
+
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('teaching_subjects, teaching_classes, curriculum')
+        .eq('id', session.user.id)
+        .single()
+
+      setProfile(p)
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const teachingSubjects = profile?.teaching_subjects ?? []
+  const subjectList      = teachingSubjects.length > 0 ? teachingSubjects : ALL_SUBJECTS
+
+  const subjectOptions = [
+    { value: '', label: 'Select a subject...' },
+    ...subjectList.map((s) => ({
+      value: s.toLowerCase().replace(/\s+/g, '_'),
+      label: s,
+    })),
+  ]
+
+  const teachingClasses      = profile?.teaching_classes ?? []
+  const activeCurriculum     = profile?.curriculum ?? curriculum
+  const allClassesForCurr    = CLASSES_BY_CURRICULUM[activeCurriculum] ?? CLASSES_BY_CURRICULUM.uk
+  const classList            = teachingClasses.length > 0 ? teachingClasses : allClassesForCurr
+
+  const classOptions = [
+    { value: '', label: 'Select a class...' },
+    ...classList.map((c) => ({
+      value: c.toLowerCase().replace(/\s+/g, '_'),
+      label: c,
+    })),
+  ]
+
+  const currLabel = CURRICULUM_LABELS[activeCurriculum] ?? 'UK'
+  const isValid   = data.subject && data.classLevel && data.assessmentType
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Spinner className="w-6 h-6" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
 
-      {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <BookOpen size={18} className="text-brand-500" />
@@ -101,67 +124,106 @@ export default function StepSetup({ data, onChange, onNext, curriculum = 'uk' })
             Assessment Details
           </h2>
         </div>
-        <p className="text-sm text-ink-3">
-          Set the subject, class, and topic. This helps organise your library.
-        </p>
+        <p className="text-sm text-ink-3">Set up your assessment details below.</p>
       </div>
 
       {/* Curriculum indicator */}
       <div className="flex items-center gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5">
-        <span className="text-xs font-semibold text-brand-700">
-          🌍 Curriculum:
-        </span>
-        <span className="text-xs text-brand-600 font-medium">
-          {currLabel}
-        </span>
-        <a
+        <span className="text-xs font-semibold text-brand-700">🌍 {currLabel}</span>
+        <Link
           href="/dashboard/settings"
           className="ml-auto text-xs text-brand-500 font-semibold hover:text-brand-400 underline underline-offset-2"
         >
-          Change in Settings
-        </a>
+          Edit preferences →
+        </Link>
       </div>
 
-      {/* Form */}
+      {/* Subject + Class */}
       <div className="flex flex-col gap-4">
-        <Select
-          label="Subject"
-          options={SUBJECTS}
-          value={data.subject}
-          onChange={(e) => onChange('subject', e.target.value)}
-        />
+        <div className="flex flex-col gap-1.5">
+          <Select
+            label="Subject"
+            options={subjectOptions}
+            value={data.subject}
+            onChange={(e) => onChange('subject', e.target.value)}
+          />
+          {!data.subject && (
+            <p className="text-xs text-ink-4 px-1">
+              Can&apos;t find your subject?{' '}
+              <Link
+                href="/dashboard/settings"
+                className="text-brand-500 font-semibold hover:text-brand-400"
+              >
+                Edit your preferences →
+              </Link>
+            </p>
+          )}
+        </div>
+
         <Select
           label="Class / Grade"
-          options={classes}
+          options={classOptions}
           value={data.classLevel}
           onChange={(e) => onChange('classLevel', e.target.value)}
         />
-        <Input
-          label="Topic"
-          placeholder="e.g. Quadratic Equations"
-          value={data.topic}
-          onChange={(e) => onChange('topic', e.target.value)}
-        />
+
         <Input
           label="Assessment Title (optional)"
-          placeholder="Auto-filled from topic if left blank"
+          placeholder="Auto-generated if left blank"
           value={data.title}
           onChange={(e) => onChange('title', e.target.value)}
-          hint="e.g. Mid-term Test — Linear Equations"
+          hint="e.g. Mid-term Test — Algebra"
         />
       </div>
 
-      {/* CTA */}
+      {/* Assessment Type */}
+      <div className="flex flex-col gap-3">
+        <label className="text-sm font-medium text-ink-2">
+          Assessment Type <span className="text-danger">*</span>
+        </label>
+        <div className="grid grid-cols-3 gap-3">
+          {ASSESSMENT_TYPES.map((type) => (
+            <button
+              key={type.id}
+              onClick={() => onChange('assessmentType', type.id)}
+              className={cn(
+                'flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-center transition-all',
+                data.assessmentType === type.id
+                  ? 'border-brand-600 bg-brand-50'
+                  : 'border-border bg-white hover:border-brand-200'
+              )}
+            >
+              <span className="text-2xl">{type.icon}</span>
+              <p className={cn(
+                'text-sm font-semibold',
+                data.assessmentType === type.id ? 'text-brand-800' : 'text-ink'
+              )}>
+                {type.label}
+              </p>
+              <p className="text-xs text-ink-4 leading-tight hidden sm:block">
+                {type.desc}
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* MCQ only notice */}
+      <div className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-2">
+        <span className="text-lg">🔘</span>
+        <div>
+          <p className="text-sm font-semibold text-ink">Multiple Choice Questions (MCQ)</p>
+          <p className="text-xs text-ink-4 mt-0.5">
+            Only MCQ is supported right now. Fill-in questions are coming soon.
+          </p>
+        </div>
+      </div>
+
       <div className="flex justify-end pt-2">
-        <Button
-          variant="primary"
-          onClick={onNext}
-          disabled={!isValid}
-        >
+        <Button variant="primary" onClick={onNext} disabled={!isValid}>
           Continue →
         </Button>
       </div>
-
     </div>
   )
 }

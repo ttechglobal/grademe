@@ -1,8 +1,9 @@
 import './globals.css'
+import 'katex/dist/katex.min.css'
 import { ToastProvider } from '@/components/ui/ToastProvider'
 
 export const metadata = {
-  title:       'GradeMe — Smart Assessments for Every Teacher',
+  title:       'GradeMee — Smart Assessments for Every Teacher',
   description: 'Create, share and analyse assessments for any subject, any class.',
 }
 

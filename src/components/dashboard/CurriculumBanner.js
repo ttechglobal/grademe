@@ -1,20 +1,42 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Globe, X } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
-export default function CurriculumBanner({ curriculum }) {
-  const [dismissed, setDismissed] = useState(false)
+const LABELS = {
+  uk:            'UK Curriculum (Year 1–13)',
+  us:            'US Curriculum (Grade K–12)',
+  nigerian:      'Nigerian Curriculum (JSS1–SS3)',
+  international: 'International (IB)',
+}
 
-  if (dismissed) return null
+export default function CurriculumBanner() {
+  const [dismissed,  setDismissed]  = useState(false)
+  const [curriculum, setCurriculum] = useState(null)
 
-  const labels = {
-    uk:            'UK Curriculum (Year 7–13)',
-    us:            'US Curriculum (Grade K–12)',
-    nigerian:      'Nigerian Curriculum (JSS1–SS3)',
-    international: 'International (IB)',
-  }
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) return
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('curriculum')
+        .eq('id', session.user.id)
+        .single()
+
+      setCurriculum(data?.curriculum ?? 'uk')
+    }
+    load()
+  }, [])
+
+  if (dismissed || !curriculum) return null
+
+  const label = LABELS[curriculum] ?? 'UK Curriculum'
+  const isNonDefault = curriculum !== 'uk'
 
   return (
     <div className="bg-brand-50 border border-brand-200 rounded-2xl px-5 py-4 flex items-center gap-4">
@@ -23,16 +45,21 @@ export default function CurriculumBanner({ curriculum }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-brand-800">
-          Currently using: {labels[curriculum] ?? 'UK Curriculum'}
+          Active curriculum: {label}
         </p>
         <p className="text-xs text-brand-600 mt-0.5">
-          Teaching Nigerian students?{' '}
-          <Link
-            href="/dashboard/settings"
-            className="font-bold underline underline-offset-2 hover:text-brand-800"
-          >
-            Change your curriculum in Settings →
-          </Link>
+          {isNonDefault
+            ? 'Your assessments will use this curriculum\'s class structure.'
+            : 'Teaching Nigerian or US students? '
+          }
+          {!isNonDefault && (
+            <Link
+              href="/dashboard/settings"
+              className="font-bold underline underline-offset-2 hover:text-brand-800"
+            >
+              Change curriculum in Settings →
+            </Link>
+          )}
         </p>
       </div>
       <button

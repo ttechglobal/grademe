@@ -2,64 +2,50 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard,
-  ClipboardList,
-  Users,
-  BarChart2,
-  Plus,
+  LayoutDashboard, ClipboardList,
+  BookOpen, Settings,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
-const tabs = [
-  { label: 'Home',        href: '/dashboard',             icon: LayoutDashboard },
-  { label: 'Assessments', href: '/dashboard/assessments', icon: ClipboardList   },
-  { label: 'Create',      href: '/dashboard/assessments/new', icon: Plus, primary: true },
-  { label: 'Students',    href: '/dashboard/students',    icon: Users           },
-  { label: 'Analytics',   href: '/dashboard/analytics',   icon: BarChart2       },
+const items = [
+  { label: 'Home',        href: '/dashboard',             icon: LayoutDashboard, exact: true  },
+  { label: 'Assessments', href: '/dashboard/assessments', icon: ClipboardList,   exact: false },
+  { label: 'Questions',   href: '/dashboard/questions',   icon: BookOpen,        exact: false },
+  { label: 'Settings',    href: '/dashboard/settings',    icon: Settings,        exact: false },
 ]
 
 export default function BottomNav() {
   const pathname = usePathname()
 
+  const isActive = (href, exact) => {
+    if (exact) return pathname === href
+    return pathname === href || pathname.startsWith(href + '/')
+  }
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border md:hidden">
-      <div className="flex items-stretch h-16">
-        {tabs.map(({ label, href, icon: Icon, primary }) => {
-          const active = pathname === href
-
-          if (primary) {
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex-1 flex flex-col items-center justify-center"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-brand-800 flex items-center justify-center shadow-lg -mt-5 border-4 border-white">
-                  <Icon size={20} className="text-white" />
-                </div>
-              </Link>
-            )
-          }
-
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-border md:hidden">
+      <div className="flex items-center">
+        {items.map(({ label, href, icon: Icon, exact }) => {
+          const active = isActive(href, exact)
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                'flex-1 flex flex-col items-center justify-center gap-1 pt-2',
-                'transition-colors duration-150',
-                active ? 'text-brand-700' : 'text-ink-4'
+                'flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-semibold transition-colors',
+                active ? 'text-brand-600' : 'text-ink-4 hover:text-ink-2'
               )}
             >
-              <Icon size={20} />
-              <span className="text-[10px] font-medium">{label}</span>
+              <Icon
+                size={20}
+                className={active ? 'text-brand-600' : 'text-ink-4'}
+              />
+              {label}
             </Link>
           )
         })}
       </div>
-      {/* Safe area spacer for iOS */}
-      <div className="h-safe-bottom bg-white" />
     </nav>
   )
 }

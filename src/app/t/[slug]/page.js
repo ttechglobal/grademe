@@ -7,22 +7,25 @@ import TestScreen   from '@/components/student/TestScreen'
 import ResultScreen from '@/components/student/ResultScreen'
 import ReviewScreen from '@/components/student/ReviewScreen'
 import Spinner      from '@/components/ui/Spinner'
-import { submitAnswers } from '@/lib/actions/submissions'
 
 export default function TestPage({ params }) {
   const { slug } = use(params)
 
   const [assessment,  setAssessment]  = useState(null)
+  const [teacher,     setTeacher]     = useState(null)
   const [loading,     setLoading]     = useState(true)
   const [notFound,    setNotFound]    = useState(false)
-  const [phase,       setPhase]       = useState('start')  // start | test | result | review
+  const [phase,       setPhase]       = useState('start')
   const [studentName, setStudentName] = useState('')
   const [answers,     setAnswers]     = useState({})
   const [results,     setResults]     = useState([])
+  const [submitError, setSubmitError] = useState('')
+  const [score,       setScore]       = useState(null)
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
+
       const { data, error } = await supabase
         .from('assessments')
         .select(`
@@ -36,11 +39,26 @@ export default function TestPage({ params }) {
         .single()
 
       if (error || !data) {
+        console.error('Assessment load error:', error)
         setNotFound(true)
-      } else {
-        data.questions.sort((a, b) => a.order_index - b.order_index)
-        setAssessment(data)
+        setLoading(false)
+        return
       }
+
+      data.questions.sort((a, b) => a.order_index - b.order_index)
+      setAssessment(data)
+
+      // Load teacher name
+      if (data.teacher_id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, role')
+          .eq('id', data.teacher_id)
+          .single()
+
+        setTeacher(profile)
+      }
+
       setLoading(false)
     }
     load()
@@ -53,12 +71,50 @@ export default function TestPage({ params }) {
 
   const handleFinish = async (finalAnswers) => {
     setAnswers(finalAnswers)
-    await submitAnswers({
-      assessmentId: assessment.id,
-      studentName,
-      answers:      finalAnswers,
-      questions:    assessment.questions,
-    })
+    setSubmitError('')
+
+    try {
+      const response = await fetch('/api/submit', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          assessmentId: assessment.id,
+          studentName,
+          answers:      finalAnswers,
+          questions:    assessment.questions,
+          questionMode: assessment.question_mode || 'mcq',
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || result.error) {
+        console.error('Submission failed:', result.error)
+        setSubmitError(result.error || 'Submission failed')
+      } else {
+        setScore(result.score)
+        console.log('Submission saved. Score:', result.score)
+
+        // Cache locally
+        try {
+          const history = JSON.parse(localStorage.getItem('grademe_submissions') || '[]')
+          history.unshift({
+            assessmentTitle: assessment.title,
+            studentName,
+            score:           result.score,
+            date:            new Date().toISOString(),
+            slug,
+          })
+          localStorage.setItem('grademe_submissions', JSON.stringify(history.slice(0, 20)))
+        } catch {
+          // localStorage not critical
+        }
+      }
+    } catch (err) {
+      console.error('Network error:', err)
+      setSubmitError('Network error — please check your connection and tell your teacher')
+    }
+
     setPhase('result')
   }
 
@@ -68,37 +124,40 @@ export default function TestPage({ params }) {
   }
 
   const handleDone = () => {
-    // Reset to start — student can close the tab or start again
     setPhase('start')
     setAnswers({})
     setResults([])
     setStudentName('')
+    setSubmitError('')
+    setScore(null)
   }
 
-  // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
-        <Spinner className="w-8 h-8" />
+        <div className="flex flex-col items-center gap-3">
+          <Spinner className="w-8 h-8" />
+          <p className="text-sm text-ink-4">Loading assessment…</p>
+        </div>
       </div>
     )
   }
 
-  // ── Not found ────────────────────────────────────────────────────────────
   if (notFound) {
     return (
       <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-4 p-6 text-center">
         <div className="text-5xl">🔍</div>
-        <h1 className="font-display text-2xl font-bold text-ink">
-          Assessment not found
-        </h1>
+        <h1 className="font-display text-2xl font-bold text-ink">Assessment not found</h1>
         <p className="text-sm text-ink-3 max-w-sm leading-relaxed">
           This link may be incorrect or the assessment may have been removed.
-          Check with your teacher.
+          Please check with your teacher.
         </p>
       </div>
     )
   }
+
+  const teacherName = teacher?.full_name || 'Your Teacher'
+  const teacherRole = teacher?.role || ''
 
   return (
     <>
@@ -108,8 +167,10 @@ export default function TestPage({ params }) {
             title:         assessment.title,
             subject:       assessment.subject,
             classLevel:    assessment.class_level,
-            teacherName:   'Your Teacher',
+            teacherName,
+            teacherRole,
             questionCount: assessment.questions.length,
+            questionMode:  assessment.question_mode || 'mcq',
           }}
           onStart={handleStart}
         />
@@ -128,6 +189,7 @@ export default function TestPage({ params }) {
           assessment={assessment}
           studentName={studentName}
           answers={answers}
+          submitError={submitError}
           onReview={handleReview}
           onDone={handleDone}
         />

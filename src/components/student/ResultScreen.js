@@ -1,7 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-import { CheckCircle2, XCircle, ChevronRight } from 'lucide-react'
+import { ChevronRight, AlertCircle } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
@@ -22,10 +21,7 @@ function ScoreRing({ score }) {
         <circle
           cx="64" cy="64" r={radius}
           fill="none"
-          stroke={
-            score >= 75 ? '#4db8b8' :
-            score >= 50 ? '#f5a623' : '#e5534b'
-          }
+          stroke={score >= 75 ? '#4db8b8' : score >= 50 ? '#f5a623' : '#e5534b'}
           strokeWidth="10"
           strokeDasharray={circ}
           strokeDashoffset={offset}
@@ -44,17 +40,18 @@ function ScoreRing({ score }) {
 }
 
 function getGrade(score) {
-  if (score >= 90) return { emoji: '🏆', label: 'Outstanding!',           sub: 'You nailed it.'                          }
-  if (score >= 75) return { emoji: '🎉', label: 'Excellent work!',        sub: 'Great understanding of this topic.'       }
-  if (score >= 50) return { emoji: '💪', label: 'Good effort!',           sub: 'A bit more practice and you\'ll ace it.' }
-  if (score >= 30) return { emoji: '📚', label: 'Keep going!',            sub: 'Review the explanations carefully.'       }
-  return                   { emoji: '🌱', label: 'Don\'t give up!',        sub: 'Everyone starts somewhere. Review below.' }
+  if (score >= 90) return { emoji: '🏆', label: 'Outstanding!',    sub: 'You nailed it. Excellent work!' }
+  if (score >= 75) return { emoji: '🎉', label: 'Excellent!',      sub: 'Great understanding of this topic.' }
+  if (score >= 50) return { emoji: '💪', label: 'Good effort!',    sub: 'A bit more practice and you\'ll ace it.' }
+  if (score >= 30) return { emoji: '📚', label: 'Keep going!',     sub: 'Review the explanations to improve.' }
+  return                   { emoji: '🌱', label: 'Don\'t give up!', sub: 'Everyone improves with practice.' }
 }
 
 export default function ResultScreen({
   assessment,
   studentName,
   answers,
+  submitError,
   onReview,
   onDone,
 }) {
@@ -79,12 +76,11 @@ export default function ResultScreen({
         <ScoreRing score={score} />
 
         <div className="text-center">
-          <p className="text-3xl mb-1">{grade.emoji}</p>
+          <p className="text-4xl mb-1">{grade.emoji}</p>
           <p className="font-display text-2xl font-bold text-white">{grade.label}</p>
-          <p className="text-sm text-white/60 mt-1">{grade.sub}</p>
+          <p className="text-sm text-white/60 mt-1 max-w-xs">{grade.sub}</p>
         </div>
 
-        {/* Stats row */}
         <div className="flex items-center gap-0 w-full max-w-xs">
           <div className="flex-1 text-center py-3 bg-white/10 rounded-l-xl">
             <p className="font-display text-2xl font-bold text-white">{correct}</p>
@@ -101,19 +97,33 @@ export default function ResultScreen({
         </div>
       </div>
 
-      {/* Quick summary */}
-      <div className="flex-1 px-4 py-6 max-w-xl mx-auto w-full flex flex-col gap-4">
+      {/* Content */}
+      <div className="flex-1 px-4 py-6 max-w-xl mx-auto w-full flex flex-col gap-5">
 
-        <p className="font-display text-lg font-bold text-ink">Quick Summary</p>
+        {/* Submit error */}
+        {submitError && (
+          <div className="bg-amber-light border border-amber/30 rounded-2xl px-5 py-4 flex items-start gap-3">
+            <AlertCircle size={18} className="text-amber flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber">
+                Note: Your result could not be saved to the server
+              </p>
+              <p className="text-xs text-amber/80 mt-0.5 leading-relaxed">
+                Your score is shown below. Please inform your teacher and try again if needed.
+              </p>
+            </div>
+          </div>
+        )}
 
-        {/* Per-question pill row */}
-        <div className="bg-white border border-border rounded-2xl p-4 shadow-card">
+        {/* Quick summary grid */}
+        <div className="bg-white border border-border rounded-2xl p-5 shadow-card">
+          <p className="font-display text-base font-bold text-ink mb-3">Quick Summary</p>
           <div className="flex flex-wrap gap-2">
             {results.map((r, i) => (
               <div
                 key={i}
                 className={cn(
-                  'w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold',
+                  'w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold',
                   r.isCorrect
                     ? 'bg-success-light text-success'
                     : 'bg-danger-light text-danger'
@@ -125,17 +135,17 @@ export default function ResultScreen({
           </div>
           <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border">
             <div className="flex items-center gap-1.5 text-xs text-ink-3">
-              <div className="w-3 h-3 rounded bg-success-light" />
+              <div className="w-3 h-3 rounded bg-success-light border border-success/30" />
               Correct
             </div>
             <div className="flex items-center gap-1.5 text-xs text-ink-3">
-              <div className="w-3 h-3 rounded bg-danger-light" />
+              <div className="w-3 h-3 rounded bg-danger-light border border-danger/30" />
               Incorrect
             </div>
           </div>
         </div>
 
-        {/* Wrong answers callout */}
+        {/* Callout for wrong answers */}
         {incorrect > 0 && (
           <div className="bg-amber-light border border-amber/30 rounded-2xl px-5 py-4 flex items-start gap-3">
             <span className="text-xl flex-shrink-0">💡</span>
@@ -144,15 +154,15 @@ export default function ResultScreen({
                 {incorrect} question{incorrect !== 1 ? 's' : ''} to review
               </p>
               <p className="text-xs text-amber/80 mt-0.5 leading-relaxed">
-                Click <strong>Review Answers</strong> to see clear explanations
+                Tap <strong>Review Answers</strong> to see step-by-step explanations
                 for every question you missed.
               </p>
             </div>
           </div>
         )}
 
-        {/* CTA buttons */}
-        <div className="flex flex-col gap-3 mt-auto pt-4">
+        {/* Actions */}
+        <div className="flex flex-col gap-3 mt-2">
           <Button
             variant="primary"
             size="full"

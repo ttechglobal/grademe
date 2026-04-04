@@ -2,142 +2,161 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { BookOpen, Plus, ChevronRight, ChevronDown, Pencil, Trash2 } from 'lucide-react'
+import { BookOpen, Plus, ChevronRight, ChevronDown, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import Spinner from '@/components/ui/Spinner'
 import EditQuestionModal from '@/components/assessment/EditQuestionModal'
+import MathRenderer from '@/components/ui/MathRenderer'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const TYPE_LABELS   = { mcq: 'MCQ', fill: 'Fill in', truefalse: 'True/False' }
 const TYPE_VARIANTS = { mcq: 'brand', fill: 'amber', truefalse: 'blue' }
 
-function TopicGroup({ topic, questions, onEdit, onDelete }) {
-  const [open, setOpen] = useState(false) // collapsed by default
+function TopicGroup({ topic, questions, onEdit, onDelete, selectedIds, onToggle, onToggleAll }) {
+  const [open, setOpen] = useState(false)
+
+  const allSelected  = questions.length > 0 && questions.every((q) => selectedIds.has(q.id))
+  const someSelected = questions.some((q) => selectedIds.has(q.id))
 
   return (
     <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
 
-      {/* Topic header — click to expand/collapse */}
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-5 py-3.5 bg-surface hover:bg-brand-50 transition-colors border-b border-border"
-      >
-        <div className="flex items-center gap-2">
-          {open
-            ? <ChevronDown size={14} className="text-ink-4 flex-shrink-0" />
-            : <ChevronRight size={14} className="text-ink-4 flex-shrink-0" />
+      {/* Header */}
+      <div className="flex items-center border-b border-border">
+        {/* Select all for topic */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleAll(questions, !allSelected) }}
+          className="pl-4 pr-2 py-3.5 text-ink-4 hover:text-brand-600 transition-colors flex-shrink-0"
+          title="Select all in this topic"
+        >
+          {allSelected
+            ? <CheckSquare size={16} className="text-brand-600" />
+            : someSelected
+            ? <CheckSquare size={16} className="text-ink-4 opacity-50" />
+            : <Square size={16} />
           }
-          <span className="text-sm font-semibold text-ink">{topic}</span>
-          <span className="text-xs text-ink-4">
-            · {questions.length} question{questions.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <span className="text-xs text-ink-4">{open ? 'Collapse' : 'Expand'}</span>
-      </button>
+        </button>
 
-      {/* Questions — only shown when open */}
-      {open && (
-        <div>
-          {questions
-            .sort((a, b) => a.order_index - b.order_index)
-            .map((q, i) => (
-              <div
-                key={q.id}
-                className="flex items-start gap-4 px-5 py-4 border-b border-border last:border-none hover:bg-surface/30 transition-colors group"
+        {/* Topic name — click to expand */}
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex-1 flex items-center justify-between px-3 py-3.5 hover:bg-surface/50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
+            {open ? <ChevronDown size={14} className="text-ink-4" /> : <ChevronRight size={14} className="text-ink-4" />}
+            <span className="text-sm font-semibold text-ink">{topic}</span>
+            <span className="text-xs text-ink-4">
+              · {questions.length} question{questions.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <span className="text-xs text-ink-4 pr-2">{open ? 'Collapse' : 'Expand'}</span>
+        </button>
+      </div>
+
+      {/* Questions */}
+      {open && questions
+        .sort((a, b) => a.order_index - b.order_index)
+        .map((q, i) => {
+          const isSelected = selectedIds.has(q.id)
+          return (
+            <div
+              key={q.id}
+              className={cn(
+                'flex items-start gap-3 px-4 py-4 border-b border-border last:border-none transition-colors',
+                isSelected ? 'bg-brand-50' : 'hover:bg-surface/30'
+              )}
+            >
+              {/* Checkbox */}
+              <button
+                onClick={() => onToggle(q.id)}
+                className="mt-0.5 flex-shrink-0 text-ink-4 hover:text-brand-600 transition-colors"
               >
-                {/* Number */}
-                <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                  {i + 1}
-                </div>
+                {isSelected
+                  ? <CheckSquare size={16} className="text-brand-600" />
+                  : <Square size={16} />
+                }
+              </button>
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-ink leading-relaxed">{q.text}</p>
+              {/* Number */}
+              <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                {i + 1}
+              </div>
 
-                  {/* MCQ options */}
-                  {q.type === 'mcq' && q.options?.length > 0 && (
-                    <div className="mt-2 flex flex-col gap-1">
-                      {q.options.map((opt, oi) => {
-                        const letter   = String.fromCharCode(65 + oi)
-                        const optLetter = opt.charAt(0)
-                        const isAnswer  = optLetter === q.answer || letter === q.answer
-                        return (
-                          <p
-                            key={oi}
-                            className={cn(
-                              'text-xs px-2 py-1 rounded',
-                              isAnswer
-                                ? 'bg-success-light text-success font-semibold'
-                                : 'text-ink-4'
-                            )}
-                          >
-                            {opt} {isAnswer && '✓'}
-                          </p>
-                        )
-                      })}
-                    </div>
-                  )}
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-ink leading-relaxed">
+                  <MathRenderer text={q.text} />
+                </p>
 
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {q.type !== 'mcq' && (
-                      <p className="text-xs text-ink-4">
-                        Answer:{' '}
-                        <span className="font-semibold text-success">{q.answer}</span>
-                      </p>
-                    )}
-                    {q.hint && (
-                      <span className="text-[11px] text-amber">💡 Hint</span>
-                    )}
-                    {q.explanation && (
-                      <span className="text-[11px] text-brand-500">📖 Explanation</span>
-                    )}
-                    {q.assessment_id ? (
-                      <span className="text-[10px] bg-brand-50 border border-brand-200 text-brand-600 px-1.5 py-0.5 rounded-full font-medium">
-                        From assessment
-                      </span>
-                    ) : (
-                      <span className="text-[10px] bg-surface border border-border text-ink-4 px-1.5 py-0.5 rounded-full font-medium">
-                        Standalone
-                      </span>
-                    )}
+                {q.type === 'mcq' && q.options?.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {q.options.map((opt, oi) => {
+                      const letter   = String.fromCharCode(65 + oi)
+                      const optLetter = opt.charAt(0)
+                      const isAnswer  = optLetter === q.answer || letter === q.answer
+                      return (
+                        <p key={oi} className={cn(
+                          'text-xs px-2 py-1 rounded',
+                          isAnswer ? 'bg-success-light text-success font-semibold' : 'text-ink-4'
+                        )}>
+                          <MathRenderer text={opt} /> {isAnswer && '✓'}
+                        </p>
+                      )
+                    })}
                   </div>
-                </div>
+                )}
 
-                {/* Actions */}
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <Badge variant={TYPE_VARIANTS[q.type] ?? 'grey'}>
-                    {TYPE_LABELS[q.type] ?? q.type}
-                  </Badge>
-                  {/* Edit — always visible on mobile, hover on desktop */}
-                  <button
-                    onClick={() => onEdit(q)}
-                    className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-brand-400 hover:text-brand-600 transition-colors md:opacity-0 md:group-hover:opacity-100"
-                    title="Edit question"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  {/* Delete */}
-                  <button
-                    onClick={() => onDelete(q.id)}
-                    className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-danger hover:text-danger transition-colors md:opacity-0 md:group-hover:opacity-100"
-                    title="Delete question"
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  {q.type !== 'mcq' && (
+                    <p className="text-xs text-ink-4">
+                      Answer: <span className="font-semibold text-success">{q.answer}</span>
+                    </p>
+                  )}
+                  {q.hint        && <span className="text-[11px] text-amber">💡 Hint</span>}
+                  {q.explanation && <span className="text-[11px] text-brand-500">📖 Explanation</span>}
+                  {q.assessment_id
+                    ? <span className="text-[10px] bg-brand-50 border border-brand-200 text-brand-600 px-1.5 py-0.5 rounded-full">From assessment</span>
+                    : <span className="text-[10px] bg-surface border border-border text-ink-4 px-1.5 py-0.5 rounded-full">Standalone</span>
+                  }
                 </div>
               </div>
-            ))}
-        </div>
-      )}
+
+              {/* Actions — always visible */}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Badge variant={TYPE_VARIANTS[q.type] ?? 'grey'}>
+                  {TYPE_LABELS[q.type] ?? q.type}
+                </Badge>
+                <button
+                  onClick={() => onEdit(q)}
+                  className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-brand-400 hover:text-brand-600 transition-colors"
+                  title="Edit"
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  onClick={() => onDelete([q.id])}
+                  className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-danger hover:text-danger transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          )
+        })}
     </div>
   )
 }
 
 export default function QuestionsPage() {
+  const { toast }                             = useToast()
   const [questions,       setQuestions]       = useState([])
   const [loading,         setLoading]         = useState(true)
   const [editingQuestion, setEditingQuestion] = useState(null)
+  const [selectedIds,     setSelectedIds]     = useState(new Set())
+  const [deleting,        setDeleting]        = useState(false)
 
   const loadQuestions = useCallback(async () => {
     setLoading(true)
@@ -151,21 +170,54 @@ export default function QuestionsPage() {
       .eq('teacher_id', session.user.id)
       .order('created_at', { ascending: false })
 
-    if (error) console.error('Questions fetch error:', error)
+    if (error) console.error(error)
     setQuestions(data ?? [])
     setLoading(false)
   }, [])
 
   useEffect(() => { loadQuestions() }, [loadQuestions])
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this question? This cannot be undone.')) return
+  const handleDelete = async (ids) => {
+    const count = ids.length
+    if (!confirm(`Delete ${count} question${count !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    setDeleting(true)
     const supabase = createClient()
-    const { error } = await supabase.from('questions').delete().eq('id', id)
-    if (!error) loadQuestions()
+    const { error } = await supabase.from('questions').delete().in('id', ids)
+    if (error) {
+      toast({ message: 'Failed to delete.', type: 'error' })
+    } else {
+      toast({ message: `${count} question${count !== 1 ? 's' : ''} deleted.`, type: 'success' })
+      setSelectedIds(new Set())
+      loadQuestions()
+    }
+    setDeleting(false)
   }
 
-  // Build Subject → Class → Topic hierarchy
+  const toggleOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleGroup = (groupQuestions, selectAll) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      groupQuestions.forEach((q) => selectAll ? next.add(q.id) : next.delete(q.id))
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    if (selectedIds.size === questions.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(questions.map((q) => q.id)))
+    }
+  }
+
+  // Build hierarchy
   const hierarchy = {}
   for (const q of questions) {
     const subject = q.subject     ?? 'Uncategorised'
@@ -220,13 +272,45 @@ export default function QuestionsPage() {
           </div>
         </div>
 
+        {/* Bulk actions bar */}
+        {totalQuestions > 0 && (
+          <div className="flex items-center gap-3 bg-white border border-border rounded-2xl px-5 py-3 shadow-card">
+            <button
+              onClick={toggleAll}
+              className="flex items-center gap-2 text-sm font-medium text-ink-3 hover:text-brand-600 transition-colors"
+            >
+              {selectedIds.size === totalQuestions
+                ? <CheckSquare size={16} className="text-brand-600" />
+                : <Square size={16} />
+              }
+              {selectedIds.size === totalQuestions ? 'Deselect all' : 'Select all'}
+            </button>
+
+            {selectedIds.size > 0 && (
+              <>
+                <span className="text-sm text-ink-4">
+                  {selectedIds.size} selected
+                </span>
+                <button
+                  onClick={() => handleDelete([...selectedIds])}
+                  disabled={deleting}
+                  className="ml-auto flex items-center gap-1.5 text-sm font-semibold text-danger hover:text-danger/80 transition-colors bg-danger-light px-4 py-2 rounded-xl"
+                >
+                  <Trash2 size={14} />
+                  Delete {selectedIds.size} selected
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Empty state */}
         {totalQuestions === 0 && (
           <div className="bg-white border border-dashed border-border rounded-2xl p-12 text-center">
             <p className="text-4xl mb-3">📚</p>
             <p className="font-semibold text-ink mb-1">No questions yet</p>
             <p className="text-sm text-ink-3 mb-6 max-w-sm mx-auto">
-              Add questions manually or import them from worksheets and past papers.
+              Add questions manually or import from worksheets and past papers.
             </p>
             <div className="flex items-center justify-center gap-3">
               <Link
@@ -239,17 +323,15 @@ export default function QuestionsPage() {
                 href="/dashboard/ai-import"
                 className="inline-flex items-center gap-2 bg-white border border-border text-ink-2 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-surface transition-colors"
               >
-                ✨ Import Questions
+                ✨ Import
               </Link>
             </div>
           </div>
         )}
 
-        {/* Subject → Class → Topic hierarchy */}
+        {/* Hierarchy */}
         {Object.entries(hierarchy).map(([subject, classes]) => (
           <div key={subject} className="flex flex-col gap-4">
-
-            {/* Subject divider */}
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-border" />
               <span className="text-xs font-bold uppercase tracking-widest text-ink-3 px-2">
@@ -259,9 +341,7 @@ export default function QuestionsPage() {
             </div>
 
             {Object.entries(classes).map(([cls, topics]) => {
-              const classTotal = Object.values(topics).reduce(
-                (s, qs) => s + qs.length, 0
-              )
+              const classTotal = Object.values(topics).reduce((s, qs) => s + qs.length, 0)
               return (
                 <div key={cls} className="flex flex-col gap-3">
                   <div className="flex items-center gap-2 px-1">
@@ -277,6 +357,9 @@ export default function QuestionsPage() {
                       questions={qs}
                       onEdit={setEditingQuestion}
                       onDelete={handleDelete}
+                      selectedIds={selectedIds}
+                      onToggle={toggleOne}
+                      onToggleAll={toggleGroup}
                     />
                   ))}
                 </div>
@@ -287,7 +370,6 @@ export default function QuestionsPage() {
 
       </div>
 
-      {/* Edit modal */}
       {editingQuestion && (
         <EditQuestionModal
           question={editingQuestion}

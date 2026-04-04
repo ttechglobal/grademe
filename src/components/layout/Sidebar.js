@@ -2,69 +2,55 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, ClipboardList, Users,
-  BarChart2, BookOpen, Sparkles,
-  Link2, Settings, HelpCircle, Users2,
+  BookOpen, Sparkles, Link2, Settings,
+  HelpCircle, Users2,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const navItems = [
   {
     section: 'Overview',
     links: [
-      { label: 'Dashboard',        href: '/dashboard',             icon: LayoutDashboard },
-      { label: 'Assessments',      href: '/dashboard/assessments', icon: ClipboardList, countKey: 'assessments' },
-      { label: 'Students',         href: '/dashboard/students',    icon: Users },
-      { label: 'Analytics',        href: '/dashboard/analytics',   icon: BarChart2 },
+      { label: 'Dashboard',        href: '/dashboard',             icon: LayoutDashboard, exact: true  },
+      { label: 'Assessments',      href: '/dashboard/assessments', icon: ClipboardList,   exact: false },
+      { label: 'Students',         href: '/dashboard/students',    icon: Users,           exact: false },
     ],
   },
   {
     section: 'Tools',
     links: [
-      { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen },
-      { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles },
-      { label: 'Share Links',      href: '/dashboard/links',       icon: Link2 },
+      { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen,  exact: false },
+      { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles,  exact: false },
+      { label: 'Share Links',      href: '/dashboard/links',       icon: Link2,     exact: false },
     ],
   },
   {
     section: 'Account',
     links: [
-      { label: 'Settings',         href: '/dashboard/settings',    icon: Settings },
+      { label: 'Settings', href: '/dashboard/settings', icon: Settings, exact: false },
     ],
   },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const [counts, setCounts] = useState({ assessments: 0 })
 
-  useEffect(() => {
-    async function loadCounts() {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
-
-      const { count } = await supabase
-        .from('assessments')
-        .select('*', { count: 'exact', head: true })
-        .eq('teacher_id', session.user.id)
-
-      setCounts({ assessments: count ?? 0 })
-    }
-    loadCounts()
-  }, [pathname])
+  const isActive = (href, exact) => {
+    if (exact) return pathname === href
+    return pathname === href || pathname.startsWith(href + '/')
+  }
 
   return (
     <aside className="w-[220px] min-h-screen bg-brand-900 flex flex-col flex-shrink-0">
 
       {/* Logo */}
       <div className="px-6 py-7 border-b border-white/10">
-        <span className="font-display text-2xl font-bold text-white">
-          GradeMee<span className="text-amber"></span>
-        </span>
+        <div className="font-display text-2xl font-bold">
+          <span className="text-white">Grade</span>
+          <span className="text-amber">Mee</span>
+        </div>
         <p className="text-xs text-white/30 mt-0.5">Assessment Platform</p>
       </div>
 
@@ -75,31 +61,24 @@ export default function Sidebar() {
             <p className="px-6 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/30">
               {group.section}
             </p>
-            {group.links.map(({ label, href, icon: Icon, countKey }) => {
-              const active = pathname === href
-              const count  = countKey ? counts[countKey] : null
+            {group.links.map(({ label, href, icon: Icon, exact }) => {
+              const active = isActive(href, exact)
               return (
                 <Link
                   key={href}
                   href={href}
                   className={cn(
-                    'flex items-center gap-3 px-6 py-2.5 text-sm',
-                    'transition-colors duration-150 relative',
+                    'flex items-center gap-3 px-6 py-2.5 text-sm transition-colors duration-150 relative',
                     active
                       ? 'text-white font-semibold bg-white/10'
                       : 'text-white/50 hover:text-white/80 hover:bg-white/5'
                   )}
                 >
                   {active && (
-                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-brand-300 rounded-r-full" />
+                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-amber rounded-r-full" />
                   )}
                   <Icon size={16} className="flex-shrink-0" />
                   <span className="flex-1">{label}</span>
-                  {count !== null && count > 0 && (
-                    <span className="bg-amber text-ink text-[10px] font-bold px-2 py-0.5 rounded-full">
-                      {count}
-                    </span>
-                  )}
                 </Link>
               )
             })}
@@ -107,7 +86,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Community link */}
+      {/* Community */}
       <div className="mx-4 mb-3">
         <a
           href="https://chat.whatsapp.com/grademe-teachers"
@@ -117,7 +96,9 @@ export default function Sidebar() {
         >
           <Users2 size={15} className="text-amber flex-shrink-0" />
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-amber leading-none">Teacher Community</p>
+            <p className="text-xs font-semibold text-amber leading-none">
+              Teacher Community
+            </p>
             <p className="text-[10px] text-white/30 mt-0.5">Join our WhatsApp group</p>
           </div>
         </a>

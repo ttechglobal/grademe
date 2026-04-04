@@ -3,26 +3,35 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
-function generateSlug(topic) {
-  const base = topic
+async function generateSlug(supabase, userId, topic) {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', userId)
+    .single()
+
+  const namePrefix = profile?.full_name
+    ? profile.full_name.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '').slice(0, 8)
+    : 'teacher'
+
+  const topicSlug = topic
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
-    .slice(0, 40)
-  const suffix = Math.random().toString(36).slice(2, 7)
-  return `${base}-${suffix}`
+    .slice(0, 30)
+
+  const suffix = Math.random().toString(36).slice(2, 6)
+  return `${namePrefix}-${topicSlug}-${suffix}`
 }
 
 export async function createAssessment(setupData, questions, settings, source = 'manual') {
   const supabase = await createClient()
-
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) redirect('/login')
 
-  const slug = generateSlug(setupData.topic)
+  const slug = await generateSlug(supabase, user.id, setupData.topic)
 
-  // 1. Insert assessment
   const { data: assessment, error: assessmentError } = await supabase
     .from('assessments')
     .insert({
@@ -32,6 +41,7 @@ export async function createAssessment(setupData, questions, settings, source = 
       class_level:       setupData.classLevel,
       topic:             setupData.topic,
       slug,
+      question_mode:     setupData.questionMode || 'mcq',
       show_results:      settings?.showResults      ?? true,
       show_explanations: settings?.showExplanations ?? true,
       require_name:      settings?.requireName      ?? true,
@@ -45,9 +55,6 @@ export async function createAssessment(setupData, questions, settings, source = 
     return { error: assessmentError.message }
   }
 
-  // 2. Insert questions
-  // If source is 'bank' — questions already exist in the bank, just copy them into the assessment
-  // If source is 'manual' or 'ai' — insert fresh and also save to bank
   const questionsToInsert = questions.map((q, index) => ({
     assessment_id: assessment.id,
     teacher_id:    user.id,
@@ -72,7 +79,6 @@ export async function createAssessment(setupData, questions, settings, source = 
     return { error: questionsError.message }
   }
 
-  // 3. If source is manual or ai — ALSO save a standalone copy to the question bank
   if (source === 'manual' || source === 'ai') {
     const bankQuestions = questions.map((q, index) => ({
       assessment_id: null,
@@ -88,8 +94,6 @@ export async function createAssessment(setupData, questions, settings, source = 
       class_level:   setupData.classLevel,
       topic:         setupData.topic,
     }))
-
-    // Insert to bank silently — don't block if it fails
     await supabase.from('questions').insert(bankQuestions)
   }
 
@@ -117,7 +121,6 @@ export async function getAssessments() {
 
 export async function getAssessmentBySlug(slug) {
   const supabase = await createClient()
-
   const { data: assessment, error } = await supabase
     .from('assessments')
     .select(`
@@ -131,7 +134,6 @@ export async function getAssessmentBySlug(slug) {
     .single()
 
   if (error) { console.error('Get assessment error:', error); return null }
-
   if (assessment?.questions) {
     assessment.questions.sort((a, b) => a.order_index - b.order_index)
   }
@@ -140,7 +142,6 @@ export async function getAssessmentBySlug(slug) {
 
 export async function getSubmissions(assessmentId) {
   const supabase = await createClient()
-
   const { data, error } = await supabase
     .from('submissions')
     .select('*')

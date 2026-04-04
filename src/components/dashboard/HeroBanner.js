@@ -5,20 +5,14 @@ import Link from 'next/link'
 export default function HeroBanner({ name }) {
   return (
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-brand-700 to-brand-500 px-8 py-8 flex items-center justify-between">
-
-      {/* Decorative circles */}
       <div className="absolute -right-8 -top-8 w-48 h-48 rounded-full bg-white/5" />
       <div className="absolute right-16 -bottom-12 w-36 h-36 rounded-full bg-white/5" />
 
-      {/* Left content */}
       <div className="relative z-10">
         <h2 className="font-display text-2xl font-bold text-white leading-snug">
           Welcome back,<br />
           {name} 👋
         </h2>
-        <p className="text-white/60 text-sm mt-2 max-w-sm leading-relaxed">
-          Your SS2 class average improved by 12% this week. Keep up the great work.
-        </p>
         <Link href="/dashboard/assessments/new">
           <Button variant="amber" size="md" className="mt-5">
             <Plus size={16} />
@@ -27,11 +21,9 @@ export default function HeroBanner({ name }) {
         </Link>
       </div>
 
-      {/* Right illustration */}
       <div className="relative z-10 text-7xl hidden md:block select-none">
         📚
       </div>
-
     </div>
   )
 }

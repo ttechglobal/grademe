@@ -1,100 +1,121 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { CheckCircle2, XCircle, ChevronLeft, ChevronRight, Sparkles, ArrowLeft } from 'lucide-react'
+import { useState } from 'react'
+import {
+  CheckCircle2, XCircle,
+  ChevronLeft, ChevronRight, ArrowLeft,
+} from 'lucide-react'
 import Button from '@/components/ui/Button'
-import Spinner from '@/components/ui/Spinner'
+import MathRenderer from '@/components/ui/MathRenderer'
 import { cn } from '@/lib/utils'
 
-// ── AI Explanation fetcher ──────────────────────────────────────────────────
-async function fetchAIExplanation(question, studentAnswer, correctAnswer, subject) {
-  const prompt = `You are a patient, encouraging tutor. A student just answered a ${subject || 'exam'} question incorrectly.
+function isMathSubject(subject) {
+  const mathSubjects = ['mathematics', 'physics', 'chemistry', 'further mathematics', 'further maths']
+  return mathSubjects.includes((subject ?? '').toLowerCase())
+}
 
-Question: ${question}
-Student's answer: ${studentAnswer || '(no answer given)'}
-Correct answer: ${correctAnswer}
+// Splits explanation into strict line-by-line blocks
+function parseExplanationLines(text) {
+  if (!text) return []
 
-Your job: Help them understand WHY the correct answer is right and WHERE they went wrong.
+  const lines = []
 
-FORMAT RULES (follow exactly):
-- Use simple, clear language — explain like to a 14-year-old
-- Be encouraging, never make them feel bad
-- Keep it SHORT — maximum 6 lines
-- For maths/calculations: show each step on a NEW LINE
-- Start each step with "Step 1:", "Step 2:" etc
-- End with "✓ Answer: [correct answer]"
-- Do NOT write long paragraphs
-- Do NOT be wordy
+  // First split on explicit newlines
+  const rawLines = text.split(/\n/)
 
-GOOD EXAMPLE FORMAT (for maths):
-Where you went wrong: You subtracted instead of adding.
+  rawLines.forEach((rawLine) => {
+    const trimmed = rawLine.trim()
+    if (!trimmed) return
 
-Step 1: Start with 2x + 5 = 13
-Step 2: Subtract 5 from both sides → 2x = 8
-Step 3: Divide both sides by 2 → x = 4
+    // Further split on sentences within a line (full stops, colons)
+    const subLines = trimmed
+      .split(/(?<=[.:])\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
 
-✓ Answer: x = 4
+    subLines.forEach((line) => {
+      // Detect line type
+      const isStepHeader = /^step\s*\d+/i.test(line)
+      const isAnswer     = /^(✓\s*)?answer:/i.test(line) || line.startsWith('✓')
+      const isWrongNote  = /^where you went wrong/i.test(line)
+      const isMathExpr   = /=/.test(line) && !/^step/i.test(line) && !/^[A-Za-z\s]{10,}$/.test(line)
 
-Now write the explanation:`
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
-        max_tokens: 400,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
+      if (isStepHeader)  lines.push({ type: 'step-header', text: line })
+      else if (isAnswer) lines.push({ type: 'answer',      text: line })
+      else if (isWrongNote) lines.push({ type: 'wrong',    text: line })
+      else if (isMathExpr)  lines.push({ type: 'math',     text: line })
+      else                  lines.push({ type: 'text',     text: line })
     })
-    const data = await res.json()
-    return data.content?.[0]?.text ?? null
-  } catch {
-    return null
-  }
+  })
+
+  return lines
 }
 
-// ── Explanation renderer ────────────────────────────────────────────────────
-function ExplanationBlock({ text, loading }) {
-  if (loading) {
-    return (
-      <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-5 flex flex-col items-center gap-3">
-        <Spinner className="w-5 h-5 text-brand-500" />
-        <p className="text-xs text-brand-500 font-medium">
-          Generating personalised explanation…
-        </p>
-      </div>
-    )
-  }
+// Maths explanation — strict line by line with alignment
+function MathStepExplanation({ text }) {
+  const lines = parseExplanationLines(text)
 
-  if (!text) return null
-
-  const lines = text.split('\n').filter((l) => l.trim().length > 0)
+  if (lines.length === 0) return null
 
   return (
-    <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-4 flex flex-col gap-2">
-      <div className="flex items-center gap-2 mb-1">
-        <Sparkles size={13} className="text-brand-500" />
-        <p className="text-xs font-bold uppercase tracking-wide text-brand-600">
-          AI Explanation
-        </p>
-      </div>
+    <div className="flex flex-col gap-1.5">
       {lines.map((line, i) => {
-        const isAnswer  = line.startsWith('✓') || line.toLowerCase().startsWith('answer:')
-        const isStep    = /^step\s*\d+:/i.test(line)
-        const isWrong   = line.toLowerCase().startsWith('where you went wrong')
+        if (line.type === 'step-header') {
+          return (
+            <p
+              key={i}
+              className="text-base font-bold text-brand-800 mt-3 first:mt-0"
+            >
+              {line.text}
+            </p>
+          )
+        }
+
+        if (line.type === 'math') {
+          // Split on = to align
+          const parts = line.text.split('=')
+          return (
+            <div
+              key={i}
+              className="font-mono text-base text-brand-800 pl-4 py-0.5 flex items-center gap-2"
+            >
+              {parts.map((part, pi) => (
+                <span key={pi} className="flex items-center gap-2">
+                  {pi > 0 && (
+                    <span className="text-brand-600 font-bold mx-1">=</span>
+                  )}
+                  <MathRenderer text={part.trim()} />
+                </span>
+              ))}
+            </div>
+          )
+        }
+
+        if (line.type === 'answer') {
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-2 bg-success-light border border-success/30 rounded-xl px-4 py-3 mt-2"
+            >
+              <span className="text-success font-bold text-base">
+                <MathRenderer text={line.text.replace(/^✓\s*/, '')} />
+              </span>
+            </div>
+          )
+        }
+
+        if (line.type === 'wrong') {
+          return (
+            <p key={i} className="text-base font-semibold text-danger mt-1">
+              {line.text}
+            </p>
+          )
+        }
+
+        // Regular text
         return (
-          <p
-            key={i}
-            className={cn(
-              'text-sm leading-relaxed',
-              isAnswer ? 'font-bold text-success mt-1'     :
-              isStep   ? 'text-brand-800 font-medium'      :
-              isWrong  ? 'text-danger font-medium'         :
-                         'text-brand-700'
-            )}
-          >
-            {line}
+          <p key={i} className="text-base text-brand-700 leading-relaxed pl-1">
+            <MathRenderer text={line.text} />
           </p>
         )
       })}
@@ -102,31 +123,28 @@ function ExplanationBlock({ text, loading }) {
   )
 }
 
-// ── Static explanation renderer (from stored explanation field) ─────────────
-function StoredExplanation({ text }) {
+// Non-maths explanation — clean structured paragraphs
+function ProseExplanation({ text }) {
   if (!text) return null
 
   const lines = text.split('\n').filter((l) => l.trim().length > 0)
 
   return (
-    <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-4 flex flex-col gap-1.5">
-      <p className="text-xs font-bold uppercase tracking-wide text-brand-600 mb-1">
-        📖 Explanation
-      </p>
+    <div className="flex flex-col gap-3">
       {lines.map((line, i) => {
-        const isAnswer = line.toLowerCase().startsWith('answer:') || line.startsWith('✓')
-        const isStep   = /^step\s*\d+:/i.test(line)
+        const isStep   = /^step\s*\d+/i.test(line)
+        const isBullet = line.trim().startsWith('-') || line.trim().startsWith('•')
         return (
           <p
             key={i}
             className={cn(
-              'text-sm leading-relaxed',
-              isAnswer ? 'font-bold text-success mt-1' :
-              isStep   ? 'text-brand-800 font-medium'  :
+              'text-base leading-relaxed',
+              isStep   ? 'font-bold text-brand-800 mt-1' :
+              isBullet ? 'text-brand-700 pl-3' :
                          'text-brand-700'
             )}
           >
-            {line}
+            {line.replace(/^[-•]\s*/, '')}
           </p>
         )
       })}
@@ -134,56 +152,47 @@ function StoredExplanation({ text }) {
   )
 }
 
-// ── Option row ──────────────────────────────────────────────────────────────
+// MCQ option row
 function OptionRow({ opt, index, isAnswer, isStudent }) {
-  let cls = 'border-border bg-white text-ink-3'
-  if (isAnswer && isStudent)  cls = 'border-success bg-success-light text-success'
-  if (isAnswer && !isStudent) cls = 'border-success bg-success-light text-success'
-  if (!isAnswer && isStudent) cls = 'border-danger bg-danger-light text-danger'
+  const letter  = String.fromCharCode(65 + index)
+  const display = typeof opt === 'string' ? opt.replace(/^[A-D]\.\s*/, '') : opt
 
-  const display = typeof opt === 'string' && opt.length > 2 && /^[A-D]\.\s/.test(opt)
-    ? opt
-    : `${String.fromCharCode(65 + index)}. ${opt}`
+  let cls = 'border-border bg-white text-ink-3'
+  if (isAnswer && isStudent)  cls = 'border-success bg-success-light text-success font-semibold'
+  if (isAnswer && !isStudent) cls = 'border-success bg-success-light text-success'
+  if (!isAnswer && isStudent) cls = 'border-danger bg-danger-light text-danger font-semibold'
 
   return (
-    <div className={cn('flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm', cls)}>
-      <span className="font-bold flex-shrink-0">{String.fromCharCode(65 + index)}</span>
-      <span className="flex-1">{opt.length > 2 ? opt.replace(/^[A-D]\.\s*/, '') : opt}</span>
-      {isAnswer  && <span className="text-xs font-bold ml-auto flex-shrink-0">✓ Correct</span>}
-      {!isAnswer && isStudent && <span className="text-xs font-bold ml-auto flex-shrink-0">Your answer</span>}
+    <div className={cn(
+      'flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-base transition-colors',
+      cls
+    )}>
+      <span className="font-bold w-7 flex-shrink-0">{letter}</span>
+      <span className="flex-1 leading-relaxed">
+        <MathRenderer text={display} />
+      </span>
+      {isAnswer  && (
+        <span className="text-sm font-bold ml-auto flex-shrink-0 whitespace-nowrap">
+          ✓ Correct
+        </span>
+      )}
+      {!isAnswer && isStudent && (
+        <span className="text-sm font-bold ml-auto flex-shrink-0 whitespace-nowrap">
+          Your answer
+        </span>
+      )}
     </div>
   )
 }
 
-// ── Main ReviewScreen ───────────────────────────────────────────────────────
 export default function ReviewScreen({ results, assessment, onDone }) {
-  const [currentIndex,   setCurrentIndex]   = useState(0)
-  const [aiExplanations, setAiExplanations] = useState({})
-  const [loadingAI,      setLoadingAI]      = useState({})
+  const [currentIndex, setCurrentIndex] = useState(0)
 
-  const current      = results[currentIndex]
+  const current   = results[currentIndex]
   const { question, studentAns, isCorrect } = current
-  const isLast       = currentIndex === results.length - 1
-  const isFirst      = currentIndex === 0
-
-  // Auto-fetch AI explanation for wrong answers
-  useEffect(() => {
-    if (isCorrect) return
-    if (aiExplanations[currentIndex] !== undefined) return
-    if (loadingAI[currentIndex]) return
-
-    setLoadingAI((prev) => ({ ...prev, [currentIndex]: true }))
-
-    fetchAIExplanation(
-      question.text,
-      studentAns,
-      question.answer,
-      assessment.subject
-    ).then((explanation) => {
-      setAiExplanations((prev) => ({ ...prev, [currentIndex]: explanation ?? '' }))
-      setLoadingAI((prev) => ({ ...prev, [currentIndex]: false }))
-    })
-  }, [currentIndex, isCorrect])
+  const isLast    = currentIndex === results.length - 1
+  const isFirst   = currentIndex === 0
+  const isMaths   = isMathSubject(assessment.subject)
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
@@ -207,19 +216,19 @@ export default function ReviewScreen({ results, assessment, onDone }) {
           {/* Progress bar */}
           <div className="h-1.5 bg-border rounded-full overflow-hidden">
             <div
-              className="h-full bg-brand-600 rounded-full transition-all duration-400"
+              className="h-full bg-brand-600 rounded-full transition-all duration-300"
               style={{ width: `${((currentIndex + 1) / results.length) * 100}%` }}
             />
           </div>
 
-          {/* Correct / incorrect pills */}
+          {/* Question pills */}
           <div className="flex flex-wrap gap-1.5 mt-3">
             {results.map((r, i) => (
               <button
                 key={i}
                 onClick={() => setCurrentIndex(i)}
                 className={cn(
-                  'w-8 h-8 rounded-lg text-xs font-bold transition-all border-2',
+                  'w-9 h-9 rounded-xl text-sm font-bold transition-all border-2',
                   i === currentIndex
                     ? 'scale-110 border-brand-600 bg-brand-600 text-white'
                     : r.isCorrect
@@ -234,39 +243,39 @@ export default function ReviewScreen({ results, assessment, onDone }) {
         </div>
       </div>
 
-      {/* Question content */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-xl mx-auto px-4 py-5 flex flex-col gap-4">
+        <div className="max-w-xl mx-auto px-4 py-5 flex flex-col gap-5">
 
-          {/* Status badge */}
+          {/* Correct / incorrect badge */}
           <div className={cn(
-            'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold self-start',
+            'inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-base font-semibold self-start',
             isCorrect
               ? 'bg-success-light text-success'
               : 'bg-danger-light text-danger'
           )}>
             {isCorrect
-              ? <><CheckCircle2 size={15} /> Correct</>
-              : <><XCircle size={15} /> Incorrect</>
+              ? <><CheckCircle2 size={18} /> Correct — Well done!</>
+              : <><XCircle size={18} /> Incorrect</>
             }
           </div>
 
           {/* Question */}
-          <div className="bg-white border border-border rounded-2xl p-5 shadow-card">
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-500 mb-2">
+          <div className="bg-white border border-border rounded-2xl p-6 shadow-card">
+            <p className="text-xs font-bold uppercase tracking-widest text-brand-500 mb-3">
               Question {currentIndex + 1}
             </p>
-            <p className="text-base font-medium text-ink leading-relaxed">
-              {question.text}
+            <p className="text-xl font-medium text-ink leading-relaxed">
+              <MathRenderer text={question.text} />
             </p>
             {question.hint && (
-              <div className="mt-3 bg-amber-light rounded-xl px-3 py-2 text-xs text-amber">
-                💡 {question.hint}
+              <div className="mt-4 bg-amber-light rounded-xl px-4 py-3 text-base text-amber leading-relaxed">
+                💡 <strong>Hint:</strong> {question.hint}
               </div>
             )}
           </div>
 
-          {/* Answer options */}
+          {/* MCQ options */}
           {question.type === 'mcq' && question.options?.length > 0 && (
             <div className="flex flex-col gap-2">
               {question.options.map((opt, oi) => {
@@ -287,11 +296,11 @@ export default function ReviewScreen({ results, assessment, onDone }) {
             </div>
           )}
 
-          {/* Fill / TrueFalse */}
+          {/* Fill/TF */}
           {(question.type === 'fill' || question.type === 'truefalse') && (
             <div className="flex flex-col gap-2">
               <div className={cn(
-                'px-4 py-3 rounded-xl border-2 text-sm',
+                'px-4 py-3.5 rounded-xl border-2 text-base',
                 isCorrect
                   ? 'border-success bg-success-light text-success'
                   : 'border-danger bg-danger-light text-danger'
@@ -299,39 +308,35 @@ export default function ReviewScreen({ results, assessment, onDone }) {
                 Your answer: <strong>{studentAns || '(no answer)'}</strong>
               </div>
               {!isCorrect && (
-                <div className="px-4 py-3 rounded-xl border-2 border-success bg-success-light text-success text-sm">
+                <div className="px-4 py-3.5 rounded-xl border-2 border-success bg-success-light text-success text-base">
                   Correct answer: <strong>{question.answer}</strong>
                 </div>
               )}
             </div>
           )}
 
-          {/* Explanation section */}
-          {isCorrect ? (
-            /* Correct — show stored explanation if available */
-            question.explanation ? (
-              <StoredExplanation text={question.explanation} />
-            ) : (
-              <div className="bg-success-light border border-success/20 rounded-xl px-4 py-3 text-sm text-success font-medium">
-                ✓ Great job! You got this one right.
-              </div>
-            )
-          ) : (
-            /* Wrong — show stored explanation OR AI-generated one */
-            question.explanation ? (
-              <StoredExplanation text={question.explanation} />
-            ) : (
-              <ExplanationBlock
-                text={aiExplanations[currentIndex]}
-                loading={!!loadingAI[currentIndex]}
-              />
-            )
-          )}
+          {/* Explanation */}
+          {question.explanation ? (
+            <div className="bg-brand-50 border border-brand-200 rounded-2xl px-5 py-5">
+              <p className="text-sm font-bold uppercase tracking-wide text-brand-600 mb-4">
+                📖 Explanation
+              </p>
+              {isMaths ? (
+                <MathStepExplanation text={question.explanation} />
+              ) : (
+                <ProseExplanation text={question.explanation} />
+              )}
+            </div>
+          ) : isCorrect ? (
+            <div className="bg-success-light border border-success/20 rounded-2xl px-5 py-4 text-base text-success font-medium">
+              ✓ Great job! You got this one right.
+            </div>
+          ) : null}
 
         </div>
       </div>
 
-      {/* Bottom navigation */}
+      {/* Bottom nav */}
       <div className="bg-white border-t border-border px-4 py-4 flex-shrink-0">
         <div className="max-w-xl mx-auto flex gap-3">
           {!isFirst && (
