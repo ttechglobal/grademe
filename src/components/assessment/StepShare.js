@@ -46,22 +46,23 @@ export default function StepShare({ data, questions, source = 'manual', onBack, 
   const updateSetting = (key, value) => setSettings((prev) => ({ ...prev, [key]: value }))
 
   const handleSave = async () => {
-    setSaving(true)
-    setError('')
-    // Pass source so assessments.js knows whether to also save to bank
-    const result = await createAssessment(data, questions, settings, source)
-    if (result.error) {
-      setError(result.error)
-      toast({ message: 'Failed to save assessment. Please try again.', type: 'error' })
-      setSaving(false)
-      return
-    }
-    setSlug(result.slug)
-    setSaved(true)
+  setSaving(true)
+  setError('')
+
+  const result = await createAssessment(data, questions, settings, source)
+
+  if (result.error) {
+    setError(result.error)
+    toast({ message: result.error, type: 'error' })
     setSaving(false)
-    toast({ message: 'Assessment saved! Share the link with your students.', type: 'success' })
+    return
   }
 
+  setSlug(result.slug)
+  setSaved(true)
+  setSaving(false)
+  toast({ message: 'Assessment saved! Share the link with your students.', type: 'success' })
+}
   const copyLink = () => {
     navigator.clipboard.writeText(shareUrl)
     setCopied(true)
