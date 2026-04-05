@@ -4,10 +4,14 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Avatar from '@/components/ui/Avatar'
 import Badge from '@/components/ui/Badge'
-import { Loader2 } from 'lucide-react'
+import Spinner from '@/components/ui/Spinner'
+import { Loader2, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+const INITIAL_COUNT = 5
+
 function scoreVariant(score) {
+  if (score === null || score === undefined) return 'grey'
   if (score >= 75) return 'green'
   if (score >= 50) return 'amber'
   return 'red'
@@ -16,11 +20,11 @@ function scoreVariant(score) {
 export default function LiveSubmissions({ userId }) {
   const [submissions, setSubmissions] = useState([])
   const [loading,     setLoading]     = useState(true)
+  const [showAll,     setShowAll]     = useState(false)
 
   const loadSubmissions = async () => {
     const supabase = createClient()
 
-    // First get this teacher's assessment IDs
     const { data: assessments } = await supabase
       .from('assessments')
       .select('id, title, class_level')
@@ -33,17 +37,15 @@ export default function LiveSubmissions({ userId }) {
     }
 
     const assessmentIds = assessments.map((a) => a.id)
+    const assessmentMap = {}
+    assessments.forEach((a) => { assessmentMap[a.id] = a })
 
     const { data } = await supabase
       .from('submissions')
       .select('id, student_name, score, total, completed_at, assessment_id')
       .in('assessment_id', assessmentIds)
       .order('completed_at', { ascending: false })
-      .limit(10)
-
-    // Map assessment title in
-    const assessmentMap = {}
-    assessments.forEach((a) => { assessmentMap[a.id] = a })
+      .limit(50)
 
     const rows = (data ?? []).map((s) => ({
       ...s,
@@ -57,33 +59,19 @@ export default function LiveSubmissions({ userId }) {
 
   useEffect(() => {
     loadSubmissions()
-
     const supabase = createClient()
     const channel  = supabase
       .channel('live-submissions-dashboard')
-      .on(
-        'postgres_changes',
-        {
-          event:  'INSERT',
-          schema: 'public',
-          table:  'submissions',
-        },
-        () => {
-          loadSubmissions()
-        }
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'submissions' }, () => loadSubmissions())
       .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => supabase.removeChannel(channel)
   }, [userId])
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8 bg-white border border-border rounded-2xl shadow-card">
         <Loader2 size={20} className="animate-spin text-brand-400" />
-        <span className="ml-2 text-sm text-ink-4">Loading submissions…</span>
+        <span className="ml-2 text-sm text-ink-4">Loading…</span>
       </div>
     )
   }
@@ -93,47 +81,34 @@ export default function LiveSubmissions({ userId }) {
       <div className="bg-white border border-dashed border-border rounded-2xl p-8 text-center">
         <p className="text-2xl mb-2">📭</p>
         <p className="text-sm font-medium text-ink mb-1">No submissions yet</p>
-        <p className="text-xs text-ink-4">
-          This updates automatically when students submit
-        </p>
+        <p className="text-xs text-ink-4">Updates automatically when students submit</p>
       </div>
     )
   }
 
+  const visible = showAll ? submissions : submissions.slice(0, INITIAL_COUNT)
+  const hasMore = submissions.length > INITIAL_COUNT
+
   return (
     <div className="flex flex-col gap-2">
-      {/* Live indicator */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-1">
         <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-        <p className="text-xs text-ink-4 font-medium">
-          Live — updates automatically when students submit
-        </p>
+        <p className="text-xs text-ink-4 font-medium">Live — updates automatically</p>
       </div>
 
       <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface border-b border-border">
-              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4">
-                Student
-              </th>
-              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4 hidden md:table-cell">
-                Assessment
-              </th>
-              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4 hidden md:table-cell">
-                Submitted
-              </th>
-              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4">
-                Score
-              </th>
+              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4">Student</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4 hidden md:table-cell">Assessment</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4 hidden md:table-cell">Submitted</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-ink-4">Score</th>
             </tr>
           </thead>
           <tbody>
-            {submissions.map((sub) => (
-              <tr
-                key={sub.id}
-                className="border-t border-border hover:bg-surface transition-colors"
-              >
+            {visible.map((sub) => (
+              <tr key={sub.id} className="border-t border-border hover:bg-surface transition-colors">
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-3">
                     <Avatar name={sub.student_name} size="sm" />
@@ -144,19 +119,13 @@ export default function LiveSubmissions({ userId }) {
                   <span className="truncate max-w-xs block">
                     {sub.assessmentTitle}
                     {sub.classLevel && (
-                      <span className="text-ink-4 ml-1">
-                        — {sub.classLevel.toUpperCase()}
-                      </span>
+                      <span className="text-ink-4 ml-1">— {sub.classLevel.toUpperCase()}</span>
                     )}
                   </span>
                 </td>
                 <td className="px-5 py-3.5 text-ink-4 text-xs hidden md:table-cell">
                   {new Date(sub.completed_at).toLocaleDateString('en-GB', {
-                    day:    'numeric',
-                    month:  'short',
-                    year:   'numeric',
-                    hour:   '2-digit',
-                    minute: '2-digit',
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                   })}
                 </td>
                 <td className="px-5 py-3.5">
@@ -172,9 +141,7 @@ export default function LiveSubmissions({ userId }) {
                           style={{ width: `${sub.score}%` }}
                         />
                       </div>
-                      <Badge variant={scoreVariant(sub.score)}>
-                        {sub.score}%
-                      </Badge>
+                      <Badge variant={scoreVariant(sub.score)}>{sub.score}%</Badge>
                     </div>
                   ) : (
                     <Badge variant="grey">Pending</Badge>
@@ -184,6 +151,24 @@ export default function LiveSubmissions({ userId }) {
             ))}
           </tbody>
         </table>
+
+        {hasMore && (
+          <div className="border-t border-border">
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="flex items-center justify-center gap-2 w-full py-3 text-sm font-semibold text-ink-3 hover:bg-surface hover:text-ink transition-colors"
+            >
+              <ChevronDown
+                size={15}
+                className={showAll ? 'rotate-180 transition-transform' : 'transition-transform'}
+              />
+              {showAll
+                ? 'Show Less'
+                : `Show ${submissions.length - INITIAL_COUNT} More`
+              }
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

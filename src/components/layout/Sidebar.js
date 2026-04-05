@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, ClipboardList, Users,
-  BookOpen, Sparkles, Link2, Settings,
+  LayoutDashboard, ClipboardList,
+  BookOpen, Sparkles, Settings,
   HelpCircle, Users2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -15,7 +15,6 @@ const navItems = [
     links: [
       { label: 'Dashboard',        href: '/dashboard',             icon: LayoutDashboard, exact: true  },
       { label: 'Assessments',      href: '/dashboard/assessments', icon: ClipboardList,   exact: false },
-      { label: 'Students',         href: '/dashboard/students',    icon: Users,           exact: false },
     ],
   },
   {
@@ -23,7 +22,6 @@ const navItems = [
     links: [
       { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen,  exact: false },
       { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles,  exact: false },
-      { label: 'Share Links',      href: '/dashboard/links',       icon: Link2,     exact: false },
     ],
   },
   {
@@ -43,10 +41,10 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-[220px] min-h-screen bg-brand-900 flex flex-col flex-shrink-0">
+    <aside className="w-[220px] h-screen sticky top-0 bg-brand-900 flex flex-col flex-shrink-0 overflow-hidden">
 
       {/* Logo */}
-      <div className="px-6 py-7 border-b border-white/10">
+      <div className="px-6 py-7 border-b border-white/10 flex-shrink-0">
         <div className="font-display text-2xl font-bold">
           <span className="text-white">Grade</span>
           <span className="text-amber">Mee</span>
@@ -54,7 +52,7 @@ export default function Sidebar() {
         <p className="text-xs text-white/30 mt-0.5">Assessment Platform</p>
       </div>
 
-      {/* Nav */}
+      {/* Nav — scrollable */}
       <nav className="flex-1 py-4 overflow-y-auto">
         {navItems.map((group) => (
           <div key={group.section} className="mb-2">
@@ -86,9 +84,9 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Community */}
-      <div className="mx-4 mb-3">
-        <a
+      {/* Community link */}
+      <div className="mx-4 mb-3 flex-shrink-0">
+          <a
           href="https://chat.whatsapp.com/grademe-teachers"
           target="_blank"
           rel="noopener noreferrer"
@@ -96,16 +94,14 @@ export default function Sidebar() {
         >
           <Users2 size={15} className="text-amber flex-shrink-0" />
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-amber leading-none">
-              Teacher Community
-            </p>
+            <p className="text-xs font-semibold text-amber leading-none">Teacher Community</p>
             <p className="text-[10px] text-white/30 mt-0.5">Join our WhatsApp group</p>
           </div>
         </a>
       </div>
 
       {/* Help */}
-      <div className="m-4 mt-0 p-4 bg-white/5 rounded-xl">
+      <div className="m-4 mt-0 p-4 bg-white/5 rounded-xl flex-shrink-0">
         <div className="flex items-center gap-2 mb-1">
           <HelpCircle size={14} className="text-white/40" />
           <span className="text-sm font-semibold text-white">Need help?</span>

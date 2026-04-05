@@ -5,12 +5,14 @@ import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import Spinner from '@/components/ui/Spinner'
-import { Plus, ExternalLink, Trash2, Copy, CheckCheck, X } from 'lucide-react'
+import { Plus, Copy, CheckCheck, Trash2, X, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/ToastProvider'
 
+const INITIAL_COUNT = 6
+
 const SUBJECT_COLORS = {
-  mathematics: 'bg-brand-500',
+  mathematics: 'bg-brand-400',
   english:     'bg-blue-500',
   biology:     'bg-emerald-500',
   chemistry:   'bg-purple-500',
@@ -20,16 +22,13 @@ const SUBJECT_COLORS = {
   default:     'bg-brand-400',
 }
 
-// Delete confirmation modal
 function DeleteModal({ assessment, onConfirm, onCancel, deleting }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-5">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="font-display text-lg font-bold text-ink mb-1">
-              Delete Assessment?
-            </h2>
+            <h2 className="font-display text-lg font-bold text-ink mb-1">Delete Assessment?</h2>
             <p className="text-sm text-ink-3 leading-relaxed">
               Are you sure you want to delete{' '}
               <strong>&quot;{assessment.title}&quot;</strong>?
@@ -43,11 +42,9 @@ function DeleteModal({ assessment, onConfirm, onCancel, deleting }) {
             <X size={15} />
           </button>
         </div>
-
         <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 text-sm text-danger">
-          ⚠️ All student submissions for this assessment will also be permanently deleted.
+          ⚠️ All student submissions will also be permanently deleted.
         </div>
-
         <div className="flex gap-3">
           <button
             onClick={onCancel}
@@ -61,7 +58,7 @@ function DeleteModal({ assessment, onConfirm, onCancel, deleting }) {
             className="flex-1 py-2.5 rounded-xl bg-danger text-white text-sm font-semibold hover:bg-danger/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {deleting ? (
-              <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <Trash2 size={14} />
             )}
@@ -87,9 +84,7 @@ function CopyableLink({ url }) {
 
   return (
     <div className="flex items-center gap-1.5 bg-surface rounded-lg px-2.5 py-1.5 border border-border max-w-full overflow-hidden">
-      <span className="text-xs text-ink-4 truncate min-w-0 flex-1">
-        /t/{slug}
-      </span>
+      <span className="text-xs text-ink-4 truncate min-w-0 flex-1">/t/{slug}</span>
       <button
         onClick={copy}
         className="flex items-center gap-1 text-xs font-semibold text-brand-500 hover:text-brand-400 flex-shrink-0"
@@ -108,11 +103,8 @@ function AssessmentCard({ assessment, onDelete }) {
 
   return (
     <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card relative flex flex-col">
-      {/* Top accent */}
       <div className={`h-[3px] w-full ${color}`} />
-
       <div className="p-5 flex flex-col gap-3 flex-1">
-        {/* Meta */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-ink-4 mb-1">
@@ -121,24 +113,19 @@ function AssessmentCard({ assessment, onDelete }) {
                 <span className="ml-2 capitalize">· {assessment.assessment_type}</span>
               )}
             </p>
-            <p className="font-semibold text-ink text-sm leading-snug">
-              {assessment.title}
-            </p>
+            <p className="font-semibold text-ink text-sm leading-snug">{assessment.title}</p>
           </div>
-          {/* Delete button */}
           <button
             onClick={(e) => { e.preventDefault(); onDelete(assessment) }}
             className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-danger hover:text-danger transition-colors flex-shrink-0"
-            title="Delete assessment"
+            title="Delete"
           >
             <Trash2 size={13} />
           </button>
         </div>
 
-        {/* Link */}
         <CopyableLink url={url} />
 
-        {/* Footer */}
         <div className="flex items-center justify-between mt-auto pt-1">
           <span className="text-xs text-ink-4">
             {count} response{count !== 1 ? 's' : ''}
@@ -161,11 +148,12 @@ function AssessmentCard({ assessment, onDelete }) {
 }
 
 export default function AssessmentsPage() {
-  const { toast }                               = useToast()
-  const [assessments,      setAssessments]      = useState([])
-  const [loading,          setLoading]          = useState(true)
-  const [deleteTarget,     setDeleteTarget]     = useState(null)
-  const [deleting,         setDeleting]         = useState(false)
+  const { toast }                           = useToast()
+  const [assessments,  setAssessments]      = useState([])
+  const [loading,      setLoading]          = useState(true)
+  const [deleteTarget, setDeleteTarget]     = useState(null)
+  const [deleting,     setDeleting]         = useState(false)
+  const [showAll,      setShowAll]          = useState(false)
 
   const load = async () => {
     const supabase = createClient()
@@ -180,7 +168,6 @@ export default function AssessmentsPage() {
 
     if (!data) { setLoading(false); return }
 
-    // Get submission counts
     const withCounts = await Promise.all(
       data.map(async (a) => {
         const { count } = await supabase
@@ -201,13 +188,9 @@ export default function AssessmentsPage() {
     if (!deleteTarget) return
     setDeleting(true)
     const supabase = createClient()
-    const { error } = await supabase
-      .from('assessments')
-      .delete()
-      .eq('id', deleteTarget.id)
-
+    const { error } = await supabase.from('assessments').delete().eq('id', deleteTarget.id)
     if (error) {
-      toast({ message: 'Failed to delete assessment.', type: 'error' })
+      toast({ message: 'Failed to delete.', type: 'error' })
     } else {
       toast({ message: 'Assessment deleted.', type: 'success' })
       setAssessments((prev) => prev.filter((a) => a.id !== deleteTarget.id))
@@ -224,21 +207,25 @@ export default function AssessmentsPage() {
     )
   }
 
+  const visible = showAll ? assessments : assessments.slice(0, INITIAL_COUNT)
+  const hasMore = assessments.length > INITIAL_COUNT
+
   return (
     <>
       <div className="flex flex-col gap-6 max-w-6xl mx-auto">
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        {/* Header — stacked on mobile */}
+        <div className="flex flex-col gap-3">
           <div>
             <h1 className="font-display text-3xl font-bold text-ink">Assessments</h1>
             <p className="text-ink-3 text-sm mt-1">
               {assessments.length} assessment{assessments.length !== 1 ? 's' : ''} created
             </p>
           </div>
+          {/* Button full-width on mobile, auto on desktop */}
           <Link
             href="/dashboard/assessments/new"
-            className="inline-flex items-center gap-2 bg-brand-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-brand-700 transition-colors"
+            className="inline-flex items-center justify-center gap-2 bg-brand-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-brand-700 transition-colors w-full sm:w-auto self-start"
           >
             <Plus size={15} />
             New Assessment
@@ -265,20 +252,37 @@ export default function AssessmentsPage() {
 
         {/* Grid */}
         {assessments.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {assessments.map((a) => (
-              <AssessmentCard
-                key={a.id}
-                assessment={a}
-                onDelete={setDeleteTarget}
-              />
-            ))}
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {visible.map((a) => (
+                <AssessmentCard
+                  key={a.id}
+                  assessment={a}
+                  onDelete={setDeleteTarget}
+                />
+              ))}
+            </div>
+
+            {hasMore && (
+              <button
+                onClick={() => setShowAll(!showAll)}
+                className="flex items-center justify-center gap-2 w-full py-3 bg-white border border-border rounded-2xl text-sm font-semibold text-ink-3 hover:bg-surface hover:text-ink transition-colors shadow-card"
+              >
+                <ChevronDown
+                  size={16}
+                  className={showAll ? 'rotate-180 transition-transform' : 'transition-transform'}
+                />
+                {showAll
+                  ? 'Show Less'
+                  : `Show ${assessments.length - INITIAL_COUNT} More`
+                }
+              </button>
+            )}
           </div>
         )}
 
       </div>
 
-      {/* Delete confirmation modal */}
       {deleteTarget && (
         <DeleteModal
           assessment={deleteTarget}

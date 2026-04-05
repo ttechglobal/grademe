@@ -22,16 +22,17 @@ export default async function DashboardPage() {
     .eq('teacher_id', user.id)
 
   const assessmentIds = (assessments ?? []).map((a) => a.id)
+  const safeIds       = assessmentIds.length > 0 ? assessmentIds : ['none']
 
   const { count: totalSubmissions } = await supabase
     .from('submissions')
     .select('*', { count: 'exact', head: true })
-    .in('assessment_id', assessmentIds.length > 0 ? assessmentIds : ['none'])
+    .in('assessment_id', safeIds)
 
   const { data: recentScores } = await supabase
     .from('submissions')
     .select('score')
-    .in('assessment_id', assessmentIds.length > 0 ? assessmentIds : ['none'])
+    .in('assessment_id', safeIds)
     .not('score', 'is', null)
     .limit(100)
 
@@ -41,24 +42,9 @@ export default async function DashboardPage() {
     : 0
 
   const stats = [
-    {
-      label:    'Assessments',
-      value:    assessments?.length ?? 0,
-      change:   'Total created',
-      positive: true,
-    },
-    {
-      label:    'Total Responses',
-      value:    totalSubmissions ?? 0,
-      change:   'Across all tests',
-      positive: true,
-    },
-    {
-      label:    'Class Average',
-      value:    `${avgScore}%`,
-      change:   'All submissions',
-      positive: avgScore >= 50,
-    },
+    { label: 'Assessments',     value: assessments?.length ?? 0, change: 'Total created',    positive: true },
+    { label: 'Total Responses', value: totalSubmissions ?? 0,     change: 'Across all tests', positive: true },
+    { label: 'Class Average',   value: `${avgScore}%`,            change: 'All submissions',  positive: avgScore >= 50 },
   ]
 
   const name           = profile?.full_name?.split(' ')[0] ?? 'Teacher'
@@ -68,17 +54,13 @@ export default async function DashboardPage() {
     <div className="flex flex-col gap-6 max-w-6xl mx-auto">
 
       <CurriculumBanner />
-
       <HeroBanner name={name} />
-
       <StatsRow stats={stats} />
 
-      {/* Assessments */}
+      {/* Recent Assessments — with Show More */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-xl font-bold text-ink">
-            Recent Assessments
-          </h2>
+          <h2 className="font-display text-xl font-bold text-ink">Recent Assessments</h2>
           <Link
             href="/dashboard/assessments"
             className="text-sm font-semibold text-brand-500 hover:text-brand-400"
@@ -106,12 +88,10 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      {/* Submissions — live */}
+      {/* Recent Submissions */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-xl font-bold text-ink">
-            Recent Submissions
-          </h2>
+          <h2 className="font-display text-xl font-bold text-ink">Recent Submissions</h2>
         </div>
         <LiveSubmissions userId={user.id} />
       </div>

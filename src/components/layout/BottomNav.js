@@ -24,7 +24,7 @@ export default function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-border md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-border md:hidden safe-area-pb">
       <div className="flex items-center">
         {items.map(({ label, href, icon: Icon, exact }) => {
           const active = isActive(href, exact)
@@ -37,10 +37,7 @@ export default function BottomNav() {
                 active ? 'text-brand-600' : 'text-ink-4 hover:text-ink-2'
               )}
             >
-              <Icon
-                size={20}
-                className={active ? 'text-brand-600' : 'text-ink-4'}
-              />
+              <Icon size={20} className={active ? 'text-brand-600' : 'text-ink-4'} />
               {label}
             </Link>
           )

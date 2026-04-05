@@ -6,7 +6,7 @@ import QuestionEditor from './QuestionEditor'
 import AIImport       from './AIImport'
 import QuestionPicker from './QuestionPicker'
 import AIGenerate     from './AIGenerate'
-import { PenLine, Sparkles, BookOpen, Wand2 } from 'lucide-react'
+import { PenLine, Wand2, BookOpen, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const MODES = [
@@ -17,35 +17,29 @@ const MODES = [
     desc:  'Add questions one by one with full control.',
   },
   {
+    id:    'generate',
+    icon:  Wand2,
+    title: 'Generate via AI',
+    desc:  'Describe your topic — AI creates questions for you.',
+    badge: '✨ Recommended',
+  },
+  {
     id:    'bank',
     icon:  BookOpen,
     title: 'Pick from Question Bank',
     desc:  'Reuse questions you have already saved.',
-    badge: 'Recommended',
   },
   {
     id:    'ai',
     icon:  Sparkles,
     title: 'AI-Assisted Import',
     desc:  'Paste questions from any source — AI parses them.',
-    badge: 'Bulk import',
-  },
-  {
-    id:    'generate',
-    icon:  Wand2,
-    title: 'Generate Using AI',
-    desc:  'Tell the AI your topic and it creates questions for you.',
-    badge: '✨ New',
   },
 ]
 
 export default function StepQuestions({
-  questions,
-  onChange,
-  onSourceChange,
-  setupData,
-  onNext,
-  onBack,
+  questions, onChange, onSourceChange,
+  setupData, onNext, onBack,
 }) {
   const [mode,        setMode]        = useState(null)
   const [selectedIds, setSelectedIds] = useState(new Map())
@@ -53,11 +47,6 @@ export default function StepQuestions({
   const selectMode = (m) => {
     setMode(m)
     onSourceChange?.(m)
-  }
-
-  const handleImport = (imported) => {
-    onChange(imported)
-    // stay on page so user can see questions added
   }
 
   const handleToggle = (question) => {
@@ -89,17 +78,13 @@ export default function StepQuestions({
     onNext()
   }
 
-  // ── Mode picker ──────────────────────────────────────────────────────────
+  // Mode picker
   if (!mode) {
     return (
       <div className="flex flex-col gap-6">
         <div>
-          <h2 className="font-display text-xl font-bold text-ink mb-1">
-            Add Questions
-          </h2>
-          <p className="text-sm text-ink-3">
-            How do you want to add questions to this assessment?
-          </p>
+          <h2 className="font-display text-xl font-bold text-ink mb-1">Add Questions</h2>
+          <p className="text-sm text-ink-3">How do you want to add questions?</p>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -127,31 +112,24 @@ export default function StepQuestions({
           ))}
         </div>
 
-        <div className="flex gap-3 justify-between pt-2">
+        <div className="flex justify-start pt-2">
           <Button variant="ghost" onClick={onBack}>← Back</Button>
         </div>
       </div>
     )
   }
 
-  // ── Bank picker ──────────────────────────────────────────────────────────
+  // Bank picker
   if (mode === 'bank') {
     return (
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-display text-xl font-bold text-ink">
-              Pick from Question Bank
-            </h2>
-            <p className="text-sm text-ink-3 mt-0.5">
-              Select questions to include
-            </p>
+            <h2 className="font-display text-xl font-bold text-ink">Pick from Question Bank</h2>
+            <p className="text-sm text-ink-3 mt-0.5">Select questions to include</p>
           </div>
-          <button
-            onClick={() => setMode(null)}
-            className="text-xs text-brand-500 font-semibold hover:text-brand-400"
-          >
-            ← Change method
+          <button onClick={() => setMode(null)} className="text-xs text-brand-500 font-semibold">
+            ← Change
           </button>
         </div>
 
@@ -164,9 +142,7 @@ export default function StepQuestions({
         <div className="flex items-center justify-between pt-2 border-t border-border">
           <Button variant="ghost" onClick={() => setMode(null)}>← Back</Button>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-ink-4">
-              {selectedIds.size} selected
-            </span>
+            <span className="text-sm text-ink-4">{selectedIds.size} selected</span>
             <Button
               variant="primary"
               onClick={confirmBankSelection}
@@ -180,58 +156,44 @@ export default function StepQuestions({
     )
   }
 
-  // ── AI Generate ──────────────────────────────────────────────────────────
+  // Generate via AI
   if (mode === 'generate') {
     return (
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-display text-xl font-bold text-ink">
-              Generate Using AI
-            </h2>
-            <p className="text-sm text-ink-3 mt-0.5">
-              Tell us the topic and we&apos;ll build the prompt for you
-            </p>
+            <h2 className="font-display text-xl font-bold text-ink">Generate via AI</h2>
+            <p className="text-sm text-ink-3 mt-0.5">Describe your topic and we&apos;ll build the prompt</p>
           </div>
-          <button
-            onClick={() => setMode(null)}
-            className="text-xs text-brand-500 font-semibold hover:text-brand-400"
-          >
-            ← Change method
+          <button onClick={() => setMode(null)} className="text-xs text-brand-500 font-semibold">
+            ← Change
           </button>
         </div>
 
         <AIGenerate
           setupData={setupData}
-          onImport={(qs) => {
-            onChange(qs)
-            onNext()
-          }}
+          onImport={(qs) => { onChange(qs); onNext() }}
         />
       </div>
     )
   }
 
-  // ── Manual or AI Import ──────────────────────────────────────────────────
+  // Manual or AI Import
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-xl font-bold text-ink">
           {mode === 'manual' ? 'Add Questions Manually' : 'AI-Assisted Import'}
         </h2>
-        <button
-          onClick={() => setMode(null)}
-          className="text-xs text-brand-500 font-semibold hover:text-brand-400"
-        >
-          ← Change method
+        <button onClick={() => setMode(null)} className="text-xs text-brand-500 font-semibold">
+          ← Change
         </button>
       </div>
 
-      {mode === 'manual' ? (
-        <QuestionEditor questions={questions} onChange={onChange} />
-      ) : (
-        <AIImport onImport={handleImport} />
-      )}
+      {mode === 'manual'
+        ? <QuestionEditor questions={questions} onChange={onChange} />
+        : <AIImport onImport={(imported) => onChange(imported)} />
+      }
 
       <div className="flex items-center justify-between pt-2 border-t border-border">
         <Button variant="ghost" onClick={() => setMode(null)}>← Back</Button>
@@ -239,11 +201,7 @@ export default function StepQuestions({
           <span className="text-sm text-ink-4">
             {questions.length} question{questions.length !== 1 ? 's' : ''} added
           </span>
-          <Button
-            variant="primary"
-            onClick={onNext}
-            disabled={questions.length === 0}
-          >
+          <Button variant="primary" onClick={onNext} disabled={questions.length === 0}>
             Continue →
           </Button>
         </div>
