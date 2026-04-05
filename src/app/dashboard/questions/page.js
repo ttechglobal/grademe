@@ -373,7 +373,7 @@ export default function QuestionsPage() {
               className="flex items-center justify-center gap-2 bg-amber text-ink text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-amber/90 transition-colors"
             >
               <Wand2 size={15} />
-              Generate via AI
+              Generate Questions via AI
             </button>
             <Link
               href="/dashboard/questions/new"

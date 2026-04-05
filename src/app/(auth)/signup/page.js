@@ -21,36 +21,34 @@ export default function SignupPage() {
     setError('')
 
     const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
+    const { error: signupError } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { full_name: fullName },
-      },
+      options: { data: { full_name: fullName } },
     })
 
-    if (error) {
-      setError(error.message)
+    if (signupError) {
+      setError(signupError.message)
       setLoading(false)
-    } else {
-      router.push('/dashboard')
+      return
     }
+
+    router.push('/onboarding')
   }
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center p-4">
       <div className="w-full max-w-md flex flex-col gap-6">
-
-        {/* Brand */}
         <div className="text-center">
-          <div className="font-display text-4xl font-bold mb-2">
-            <span className="text-ink">Grade</span>
-            <span className="text-amber">Mee</span>
-          </div>
+          <Link href="/" className="inline-block">
+            <div className="font-display text-4xl font-bold mb-2">
+              <span className="text-ink">Grade</span>
+              <span className="text-amber">Mee</span>
+            </div>
+          </Link>
           <p className="text-ink-3 text-sm">Create your free teacher account</p>
         </div>
 
-        {/* Form */}
         <div className="bg-white border border-border rounded-3xl p-8 shadow-card">
           <form onSubmit={handleSignup} className="flex flex-col gap-4">
             <Input
@@ -84,12 +82,7 @@ export default function SignupPage() {
               </div>
             )}
 
-            <Button
-              type="submit"
-              variant="primary"
-              size="full"
-              loading={loading}
-            >
+            <Button type="submit" variant="primary" size="full" loading={loading}>
               Create Account
             </Button>
           </form>
@@ -97,16 +90,12 @@ export default function SignupPage() {
           <div className="mt-5 text-center">
             <p className="text-sm text-ink-4">
               Already have an account?{' '}
-              <Link
-                href="/login"
-                className="text-brand-600 font-semibold hover:text-brand-500"
-              >
+              <Link href="/login" className="text-brand-600 font-semibold hover:text-brand-500">
                 Sign in
               </Link>
             </p>
           </div>
         </div>
-
       </div>
     </div>
   )
