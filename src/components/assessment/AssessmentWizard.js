@@ -20,17 +20,24 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   const [setupData, setSetupData] = useState({
     subject:        '',
     classLevel:     '',
-    assessmentType: '', // 'assignment' | 'quiz' | 'test'
+    assessmentType: '',
     title:          '',
-    questionMode:   'mcq', // always mcq for now
+    questionMode:   'mcq',
+    curriculum:     '',
+    timerEnabled:   false,
+    timeLimitMins:  30,
   })
 
   const [questions,      setQuestions]      = useState([])
   const [questionSource, setQuestionSource] = useState('manual')
 
-  const updateSetup = (field, value) => {
+  // Track which question-entry mode the tutor was using (manual/bank/ai/generate).
+  // When they return from Step 3 (preview/share) back to Step 2, we restore this
+  // so they land on their question list, not the mode-picker screen.
+  const [questionMode, setQuestionMode] = useState(null)
+
+  const updateSetup = (field, value) =>
     setSetupData((prev) => ({ ...prev, [field]: value }))
-  }
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -42,8 +49,8 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             <div className="flex flex-col items-center gap-1.5">
               <div className={cn(
                 'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors',
-                step === s.number  ? 'bg-brand-800 text-white' :
-                step > s.number   ? 'bg-success text-white'   : 'bg-border text-ink-4'
+                step === s.number ? 'bg-brand-800 text-white' :
+                step > s.number  ? 'bg-success text-white'   : 'bg-border text-ink-4'
               )}>
                 {step > s.number ? '✓' : s.number}
               </div>
@@ -66,35 +73,41 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
 
       {/* Step content */}
       <div className="bg-white border border-border rounded-3xl p-8 shadow-card">
+
         {step === 1 && (
           <StepSetup
             data={setupData}
             onChange={updateSetup}
             onNext={() => setStep(2)}
-            curriculum={curriculum}
+            accountCurriculum={curriculum}
           />
         )}
+
         {step === 2 && (
           <StepQuestions
             questions={questions}
             onChange={setQuestions}
-            onSourceChange={setQuestionSource}
+            onSourceChange={(m) => { setQuestionMode(m); setQuestionSource(m) }}
+            // Restore the last mode used — so Back from Step 3 shows question list, not picker
+            initialMode={questionMode}
             setupData={setupData}
             onNext={() => setStep(3)}
-            onBack={() => setStep(1)}
+            onBack={() => { setStep(1) }}
           />
         )}
+
         {step === 3 && (
           <StepShare
             data={{ ...setupData, questionCount: questions.length }}
             questions={questions}
             source={questionSource}
+            // Back from share → questions list (mode already preserved in questionMode state)
             onBack={() => setStep(2)}
             onFinish={() => router.push('/dashboard/assessments')}
           />
         )}
-      </div>
 
+      </div>
     </div>
   )
 }

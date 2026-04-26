@@ -21,6 +21,10 @@ const DEFAULT_SUBJECTS = [
   'Religious Studies', 'Business Studies', 'Accounting', 'Art',
 ]
 
+// PASTE THIS INTO src/app/dashboard/settings/page.js
+// Replace the existing CURRICULA array (the one starting with 'const CURRICULA = [')
+// with this version — Canadian curriculum has been added between US and Nigerian.
+
 const CURRICULA = [
   {
     value:   'uk',
@@ -34,12 +38,23 @@ const CURRICULA = [
   {
     value:   'us',
     label:   'US Curriculum',
-    description: 'Grade K–12 · GPA grading',
+    description: 'Grade K–12 · Common Core',
     classes: [
       'Kindergarten','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5',
       'Grade 6','Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12',
     ],
   },
+  // ── NEW: Canadian Curriculum ───────────────────────────────────────────
+  {
+    value:   'canadian',
+    label:   'Canadian Curriculum',
+    description: 'Grade K–12 · Provincial standards',
+    classes: [
+      'Kindergarten','Grade 1','Grade 2','Grade 3','Grade 4','Grade 5',
+      'Grade 6','Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12',
+    ],
+  },
+  // ──────────────────────────────────────────────────────────────────────
   {
     value:   'nigerian',
     label:   'Nigerian Curriculum',

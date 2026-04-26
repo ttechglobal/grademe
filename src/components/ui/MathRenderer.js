@@ -1,80 +1,119 @@
 'use client'
 
-import { InlineMath, BlockMath } from 'react-katex'
-import { cn } from '@/lib/utils'
+/**
+ * MathRenderer
+ *
+ * Renders math using KaTeX (react-katex).
+ *
+ * PRIMARY path (preferred): text containing $...$ or \(...\) delimiters
+ *   → extracted and passed directly to KaTeX as-is
+ *
+ * SECONDARY path (for plain text without delimiters):
+ *   → hasMath() detects math-like content
+ *   → the whole string is converted to LaTeX and wrapped in $...$
+ *   → then rendered via KaTeX
+ *
+ * For STEM working lines, use preprocessMath() in ExplanationRenderer
+ * BEFORE passing here — it handles compound expressions like "250*3.5/2"
+ * which would otherwise be ambiguously split.
+ */
 
-function convertToLatex(text) {
+import { InlineMath, BlockMath } from 'react-katex'
+
+// ── Plain text → LaTeX ─────────────────────────────────────────────────────
+// Applied to the WHOLE string (not to individual tokens).
+// Called only when the string has no $...$ delimiters but contains math patterns.
+export function plainToLatex(text) {
   if (!text) return text
-  return text
-    .replace(/(\d+)\/(\d+)/g, (_, a, b) => `\\frac{${a}}{${b}}`)
-    .replace(/([a-zA-Z0-9])\^(\d+)/g, (_, base, exp) => `${base}^{${exp}}`)
-    .replace(/sqrt\(([^)]+)\)/g, (_, inner) => `\\sqrt{${inner}}`)
-    .replace(/\s\*\s/g, ' \\times ')
-    .replace(/\bpi\b/g, '\\pi')
-    .replace(/<=/g, '\\leq')
-    .replace(/>=/g, '\\geq')
-    .replace(/!=/g, '\\neq')
+  let t = text
+
+  // Compound fraction: "250*3.5/2" → "\frac{250 \times 3.5}{2}"
+  t = t.replace(/([\d.]+)\s*\*\s*([\d.]+)\s*\/\s*([\d.]+)/g,
+    (_, a, b, c) => `\\frac{${a} \\times ${b}}{${c}}`)
+
+  // Simple fraction: "875/2" → "\frac{875}{2}"
+  t = t.replace(/(?<![a-zA-Z:])(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)(?!\d)/g,
+    (_, a, b) => `\\frac{${a}}{${b}}`)
+
+  // Multiplication: "250*3.5" or "250 * 3.5" → "250 \times 3.5"
+  t = t.replace(/(\d)\s*\*\s*(\d)/g, (_, a, b) => `${a} \\times ${b}`)
+  t = t.replace(/(\d)\s*×\s*(\d)/g,  (_, a, b) => `${a} \\times ${b}`)
+
+  // Negative exponents: "s^-1" → "s^{-1}"
+  t = t.replace(/([a-zA-Z])\^(-\d+)/g, (_, b, e) => `${b}^{${e}}`)
+
+  // Positive exponents: "x^2" → "x^{2}"
+  t = t.replace(/([a-zA-Z0-9])\^(\d+)/g, (_, b, e) => `${b}^{${e}}`)
+
+  // Square roots: "sqrt(9)" → "\sqrt{9}"
+  t = t.replace(/sqrt\(([^)]+)\)/gi, (_, inner) => `\\sqrt{${inner}}`)
+
+  // Subscripts: "d_1" → "d_{1}", bare "d1" → "d_{1}"
+  t = t.replace(/([a-zA-Z])_(\w+)/g,  (_, b, s) => `${b}_{${s}}`)
+  t = t.replace(/\b([a-zA-Z])(\d)\b/g, (_, b, s) => `${b}_{${s}}`)
+
+  // Units
+  t = t.replace(/\bm\s*\/\s*s\b/g, 'm\\,s^{-1}')
+  t = t.replace(/\bms\^?-?1\b/gi,  'm\\,s^{-1}')
+  t = t.replace(/\bkm\/h\b/g,      'km\\,h^{-1}')
+
+  // Constants and operators
+  t = t.replace(/\bpi\b/gi, '\\pi')
+  t = t.replace(/\+-/g, '\\pm').replace(/±/g, '\\pm')
+  t = t.replace(/<=/g, '\\leq').replace(/>=/g, '\\geq').replace(/!=/g, '\\neq')
+  t = t.replace(/\bdegrees?\b/gi, '^{\\circ}').replace(/°/g, '^{\\circ}')
+
+  return t
 }
 
+// ── Detect math-like content ───────────────────────────────────────────────
 function hasMath(text) {
   if (!text) return false
-  return /[\^]|sqrt\(|\\frac|\\sqrt|=\s*[\d]|\d+[a-zA-Z]|[a-zA-Z]\s*=\s*\d/.test(text)
+  return /[\^*]|sqrt\s*\(|\bpi\b|\\frac|\\sqrt|\\times|\d+\/\d+|[a-zA-Z]_\d|\+-|<=|>=|!=|\bms\^?-1\b|m\/s/.test(text)
 }
 
-function RenderMixed({ content }) {
-  const tokens = content.split(
-    /(\b\d+\/\d+\b|[a-zA-Z0-9]+\^\d+|sqrt\([^)]+\)|\d+[a-zA-Z]+\b|\b[a-zA-Z]\s*=\s*[\d.]+)/g
-  )
-
-  return (
-    <span>
-      {tokens.map((token, i) => {
-        if (!token) return null
-        const latex = convertToLatex(token)
-        if (latex !== token) {
-          try {
-            return <InlineMath key={i} math={latex} />
-          } catch {
-            return <span key={i}>{token}</span>
-          }
-        }
-        return <span key={i}>{token}</span>
-      })}
-    </span>
-  )
-}
-
+// ── Parse $...$, \(...\) segments ──────────────────────────────────────────
 function parseSegments(text) {
   if (!text) return [{ type: 'text', content: '' }]
-  const segments = []
-  const parts = text.split(/(\$[^$]+\$|\\\([^)]+\\\))/)
 
-  parts.forEach((part) => {
-    if (part.startsWith('$') && part.endsWith('$')) {
-      segments.push({ type: 'math', content: part.slice(1, -1) })
+  const segments = []
+  const parts = text.split(/(\$\$[^$]+\$\$|\$[^$]+\$|\\\[[^\]]+\\\]|\\\([^)]+\\\))/)
+
+  for (const part of parts) {
+    if (!part) continue
+    if (part.startsWith('$$') && part.endsWith('$$')) {
+      segments.push({ type: 'block', content: part.slice(2, -2) })
+    } else if (part.startsWith('$') && part.endsWith('$')) {
+      segments.push({ type: 'inline', content: part.slice(1, -1) })
+    } else if (part.startsWith('\\[') && part.endsWith('\\]')) {
+      segments.push({ type: 'block', content: part.slice(2, -2) })
     } else if (part.startsWith('\\(') && part.endsWith('\\)')) {
-      segments.push({ type: 'math', content: part.slice(2, -2) })
-    } else if (part) {
-      if (hasMath(part)) {
-        segments.push({ type: 'mixed', content: part })
-      } else {
-        segments.push({ type: 'text', content: part })
-      }
+      segments.push({ type: 'inline', content: part.slice(2, -2) })
+    } else if (hasMath(part)) {
+      // No delimiters but has math — convert the whole segment
+      const latex = plainToLatex(part)
+      segments.push({ type: latex !== part ? 'inline' : 'text', content: latex !== part ? latex : part })
+    } else {
+      segments.push({ type: 'text', content: part })
     }
-  })
+  }
 
   return segments.length > 0 ? segments : [{ type: 'text', content: text }]
 }
 
+// ── Main component ─────────────────────────────────────────────────────────
 export default function MathRenderer({ text, block = false, className = '' }) {
   if (!text) return null
 
-  if (block && text.trim().startsWith('$') && text.trim().endsWith('$')) {
-    const latex = text.trim().slice(1, -1)
-    try {
-      return <div className={className}><BlockMath math={latex} /></div>
-    } catch {
-      return <p className={className}>{text}</p>
+  // Block mode override
+  if (block) {
+    const t = text.trim()
+    const inner =
+      t.startsWith('$$') && t.endsWith('$$') ? t.slice(2, -2) :
+      t.startsWith('$')  && t.endsWith('$')  ? t.slice(1, -1) : null
+    if (inner) {
+      try { return <div className={className}><BlockMath math={inner} /></div> }
+      catch { return <p className={className}>{text}</p> }
     }
   }
 
@@ -87,112 +126,16 @@ export default function MathRenderer({ text, block = false, className = '' }) {
   return (
     <span className={className}>
       {segments.map((seg, i) => {
-        if (seg.type === 'math') {
+        if (seg.type === 'block') {
+          try { return <div key={i}><BlockMath math={seg.content} /></div> }
+          catch { return <span key={i}>{seg.content}</span> }
+        }
+        if (seg.type === 'inline') {
           try { return <InlineMath key={i} math={seg.content} /> }
           catch { return <span key={i}>{seg.content}</span> }
         }
-        if (seg.type === 'mixed') return <RenderMixed key={i} content={seg.content} />
         return <span key={i}>{seg.content}</span>
       })}
     </span>
-  )
-}
-
-// ── Strict step-by-step explanation renderer ──────────────────────────────────
-export function MathExplanation({ text, className = '' }) {
-  if (!text) return null
-
-  // Split on newlines — each line is its own visual block
-  const rawLines = text.split('\n')
-
-  // Group lines into steps
-  const blocks = []
-  let currentStep = null
-
-  rawLines.forEach((line) => {
-    const trimmed = line.trim()
-    if (!trimmed) return
-
-    const isStepHeader  = /^step\s*\d+/i.test(trimmed)
-    const isAnswer      = /^(✓\s*)?answer:/i.test(trimmed) || trimmed.startsWith('✓')
-    const isWrong       = /^where you went wrong/i.test(trimmed)
-    const isMathLine    = /=|\\frac|\^|sqrt/.test(trimmed) && !/^step/i.test(trimmed)
-
-    if (isStepHeader) {
-      currentStep = { header: trimmed, lines: [] }
-      blocks.push({ type: 'step', data: currentStep })
-    } else if (isAnswer) {
-      blocks.push({ type: 'answer', data: trimmed })
-      currentStep = null
-    } else if (isWrong) {
-      blocks.push({ type: 'wrong', data: trimmed })
-      currentStep = null
-    } else if (currentStep) {
-      currentStep.lines.push({ text: trimmed, isMath: isMathLine })
-    } else {
-      blocks.push({ type: 'text', data: trimmed, isMath: isMathLine })
-    }
-  })
-
-  return (
-    <div className={cn('flex flex-col gap-2', className)}>
-      {blocks.map((block, bi) => {
-        if (block.type === 'step') {
-          return (
-            <div key={bi} className="flex flex-col gap-1">
-              {/* Step header */}
-              <p className="text-sm font-bold text-brand-800">
-                {block.data.header}
-              </p>
-              {/* Step lines */}
-              {block.data.lines.map((line, li) => (
-                <div
-                  key={li}
-                  className={cn(
-                    'text-sm text-brand-700',
-                    line.isMath ? 'font-mono pl-4 py-0.5' : 'pl-4'
-                  )}
-                >
-                  <MathRenderer text={line.text} />
-                </div>
-              ))}
-            </div>
-          )
-        }
-
-        if (block.type === 'answer') {
-          return (
-            <div
-              key={bi}
-              className="flex items-center gap-2 bg-success-light border border-success/30 rounded-lg px-3 py-2 mt-1"
-            >
-              <span className="text-success font-bold text-sm">
-                <MathRenderer text={block.data} />
-              </span>
-            </div>
-          )
-        }
-
-        if (block.type === 'wrong') {
-          return (
-            <p key={bi} className="text-sm font-semibold text-danger">
-              {block.data}
-            </p>
-          )
-        }
-
-        return (
-          <div
-            key={bi}
-            className={cn(
-              'text-sm text-brand-700',
-              block.isMath ? 'font-mono pl-2 py-0.5' : ''
-            )}
-          >
-            <MathRenderer text={block.data} />
-          </div>
-        )
-      })}
-    </div>
   )
 }

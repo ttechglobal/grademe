@@ -1,128 +1,120 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-function answersMatch(studentAnswer, correctAnswer) {
-  if (!studentAnswer) return false
-
-  const student = studentAnswer.trim().toLowerCase()
-  const correct  = correctAnswer.trim().toLowerCase()
-
-  if (student === correct) return true
-
-  const clean = (s) => s.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
-  if (clean(student) === clean(correct)) return true
-
-  const numberWords = {
-    zero: '0', one: '1', two: '2', three: '3', four: '4',
-    five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10',
-  }
-  const toNum = (s) => numberWords[s] ?? s
-  if (toNum(student) === toNum(correct)) return true
-
-  if (Math.abs(student.length - correct.length) <= 1) {
-    let diff = 0
-    const minLen = Math.min(student.length, correct.length)
-    for (let i = 0; i < minLen; i++) {
-      if (student[i] !== correct[i]) diff++
-    }
-    if (diff <= 1) return true
-  }
-
-  if (student.includes(correct) || correct.includes(student)) return true
-
-  return false
+function adminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
 }
 
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { assessmentId, studentName, answers, questions, questionMode } = body
+    const {
+      assessmentId,
+      studentName,
+      answers,
+      score,
+      total,
+      sessionKey,
+      timeTakenSecs,
+      tabViolations,
+    } = body
 
-    console.log('Submit API hit:', { assessmentId, studentName })
-
-    if (!assessmentId || !studentName || !answers || !questions) {
+    if (!assessmentId || !studentName) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'assessmentId and studentName are required' },
         { status: 400 }
       )
     }
 
-    const supabaseUrl      = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceRoleKey   = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const db = adminClient()
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.error('Missing env vars:', {
-        hasUrl:            !!supabaseUrl,
-        hasServiceRoleKey: !!serviceRoleKey,
-      })
-      return NextResponse.json(
-        { error: 'Server configuration error — missing environment variables' },
-        { status: 500 }
-      )
-    }
-
-    // Service role key bypasses RLS entirely
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken:  false,
-        persistSession:    false,
-      },
-    })
-
-    // Calculate score
-    let correct = 0
-    questions.forEach((q, i) => {
-      const studentAnswer = answers[i]
-      if (!studentAnswer) return
-
-      if (questionMode === 'fill' || q.type === 'fill') {
-        if (answersMatch(studentAnswer, q.answer)) correct++
-      } else {
-        if (studentAnswer.trim().toLowerCase() === q.answer.trim().toLowerCase()) {
-          correct++
-        }
-      }
-    })
-
-    const score = Math.round((correct / questions.length) * 100)
-
-    console.log('Inserting submission:', { assessmentId, studentName, score })
-
-    const { data, error } = await supabase
-      .from('submissions')
-      .insert({
-        assessment_id: assessmentId,
-        student_name:  studentName,
-        answers,
-        score,
-        total:         questions.length,
-      })
-      .select('id')
+    // Verify assessment exists and get teacher context
+    const { data: assessment, error: aErr } = await db
+      .from('assessments')
+      .select('id, teacher_id, title, class_level')
+      .eq('id', assessmentId)
       .single()
 
-    if (error) {
-      console.error('Insert error:', JSON.stringify(error))
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      )
+    if (aErr || !assessment) {
+      console.error('[submit] Assessment not found:', aErr?.message)
+      return NextResponse.json({ error: 'Assessment not found' }, { status: 404 })
     }
 
-    console.log('Submission saved:', data.id)
+    // Try to link a student_profile_id if the table exists
+    let profileId = null
+    try {
+      const { data: existing } = await db
+        .from('student_profiles')
+        .select('id')
+        .eq('teacher_id', assessment.teacher_id)
+        .ilike('full_name', studentName.trim())
+        .is('merged_into', null)
+        .maybeSingle()
+
+      if (existing) {
+        profileId = existing.id
+        await db.from('student_profiles')
+          .update({ last_active: new Date().toISOString() })
+          .eq('id', profileId)
+      } else {
+        const { data: created } = await db
+          .from('student_profiles')
+          .insert({
+            teacher_id:  assessment.teacher_id,
+            full_name:   studentName.trim(),
+            grade_class: assessment.class_level ?? null,
+            last_active: new Date().toISOString(),
+          })
+          .select('id')
+          .single()
+        profileId = created?.id ?? null
+      }
+    } catch {
+      // student_profiles table may not exist yet — submission still succeeds
+      console.warn('[submit] student_profiles unavailable, submitting without profile link')
+    }
+
+    // Insert the submission
+    const { data: sub, error: subErr } = await db
+      .from('submissions')
+      .insert({
+        assessment_id:      assessmentId,
+        student_name:       studentName.trim(),
+        answers,
+        score:              score  ?? 0,
+        total:              total  ?? 0,
+        completed_at:       new Date().toISOString(),
+        session_key:        sessionKey    ?? null,
+        time_taken_secs:    timeTakenSecs ?? null,
+        tab_violations:     tabViolations ?? 0,
+        student_profile_id: profileId,
+        grade_class:        assessment.class_level ?? null,
+        student_identifier: null,
+      })
+      .select('id, score, total')
+      .single()
+
+    if (subErr) {
+      console.error('[submit] Insert failed:', subErr.message)
+      return NextResponse.json({ error: subErr.message }, { status: 500 })
+    }
+
+    console.log(`[submit] ✓ ${studentName} scored ${score}% on ${assessment.title}`)
 
     return NextResponse.json({
       success: true,
-      score,
-      correct,
-      total:   questions.length,
-      id:      data.id,
+      id:      sub.id,
+      score:   sub.score,
+      total:   sub.total,
     })
 
   } catch (err) {
-    console.error('Route exception:', err)
-    return NextResponse.json(
-      { error: err.message || 'Unexpected server error' },
-      { status: 500 }
-    )
+    console.error('[submit] Unhandled:', err.message)
+    return NextResponse.json({ error: err.message ?? 'Server error' }, { status: 500 })
   }
 }

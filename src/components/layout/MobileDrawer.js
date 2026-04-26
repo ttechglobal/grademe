@@ -1,106 +1,111 @@
 'use client'
 
-import { useEffect } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import {
-  LayoutDashboard, ClipboardList, BookOpen,
-  Sparkles, Settings, X, Users2,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useEffect } from 'react'
+import Link                    from 'next/link'
+import { usePathname }         from 'next/navigation'
+import { Menu, X, Users2, HelpCircle, ChevronRight } from 'lucide-react'
+import { NavLinks }            from '@/components/layout/Sidebar'
+import { cn }                  from '@/lib/utils'
 
-const navItems = [
-  { label: 'Dashboard',        href: '/dashboard',             icon: LayoutDashboard, exact: true  },
-  { label: 'Assessments',      href: '/dashboard/assessments', icon: ClipboardList,   exact: false },
-  { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen,        exact: false },
-  { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles,        exact: false },
-  { label: 'Settings',         href: '/dashboard/settings',    icon: Settings,        exact: false },
-]
+/**
+ * MobileDrawer
+ *
+ * Renders a hamburger button (visible only on mobile, hidden on md+).
+ * Tapping it slides in a full-height drawer with the exact same nav
+ * links as the desktop Sidebar — because both import NAV_GROUPS from
+ * the same source. Students, Assessments, Question Bank etc. are all
+ * guaranteed to be present.
+ *
+ * Usage: render <MobileDrawer /> inside the Topbar.
+ */
+export default function MobileDrawer() {
+  const [open,    setOpen]    = useState(false)
+  const pathname              = usePathname()
 
-export default function MobileDrawer({ open, onClose }) {
-  const pathname = usePathname()
+  // Close drawer on route change
+  useEffect(() => { setOpen(false) }, [pathname])
 
+  // Prevent body scroll when drawer is open
   useEffect(() => {
-    if (open) document.body.style.overflow = 'hidden'
-    else document.body.style.overflow = ''
+    document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [open])
 
-  const isActive = (href, exact) => {
-    if (exact) return pathname === href
-    return pathname === href || pathname.startsWith(href + '/')
-  }
-
-  if (!open) return null
-
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      {/* ── Hamburger button — only visible on mobile ─────────────── */}
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Open navigation menu"
+        className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+      >
+        <Menu size={20} className="text-white" />
+      </button>
 
-      {/* Drawer */}
-      <div className="fixed top-0 left-0 bottom-0 z-50 w-[280px] bg-brand-900 flex flex-col">
+      {/* ── Backdrop ──────────────────────────────────────────────── */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
-          <div className="font-display text-2xl font-bold">
+      {/* ── Drawer ────────────────────────────────────────────────── */}
+      <aside
+        className={cn(
+          'fixed top-0 left-0 bottom-0 z-50 w-[280px] bg-brand-900',
+          'flex flex-col shadow-2xl transition-transform duration-300 ease-out md:hidden',
+          open ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        {/* Logo + close */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10 flex-shrink-0">
+          <div className="font-display text-xl font-bold select-none">
             <span className="text-white">Grade</span>
             <span className="text-amber">Mee</span>
           </div>
           <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            onClick={() => setOpen(false)}
+            aria-label="Close menu"
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
           >
-            <X size={16} />
+            <X size={18} className="text-white" />
           </button>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 py-4 overflow-y-auto">
-          {navItems.map(({ label, href, icon: Icon, exact }) => {
-            const active = isActive(href, exact)
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={onClose}
-                className={cn(
-                  'flex items-center gap-3 px-6 py-3.5 text-sm transition-colors relative',
-                  active
-                    ? 'text-white font-semibold bg-white/10'
-                    : 'text-white/50 hover:text-white/80 hover:bg-white/5'
-                )}
-              >
-                {active && (
-                  <span className="absolute left-0 top-2 bottom-2 w-[3px] bg-amber rounded-r-full" />
-                )}
-                <Icon size={18} className="flex-shrink-0" />
-                {label}
-              </Link>
-            )
-          })}
+        {/* Nav — imported from Sidebar, identical to desktop */}
+        <nav className="flex-1 py-5 overflow-y-auto">
+          <NavLinks onNavigate={() => setOpen(false)} />
         </nav>
 
-        {/* Community — visible on mobile */}
-        <div className="mx-4 mb-3">
+        {/* Community */}
+        <div className="mx-3 mb-3">
           <a
             href="https://chat.whatsapp.com/grademe-teachers"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-3 bg-amber/10 border border-amber/20 rounded-xl hover:bg-amber/20 transition-colors"
+            className="flex items-center gap-2.5 px-4 py-3 bg-amber/10 border border-amber/20 rounded-xl hover:bg-amber/15 transition-colors group"
           >
             <Users2 size={15} className="text-amber flex-shrink-0" />
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-amber leading-none">Teacher Community</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-amber leading-none">Teacher Community</p>
               <p className="text-[10px] text-white/30 mt-0.5">Join our WhatsApp group</p>
             </div>
+            <ChevronRight size={12} className="text-amber/40 group-hover:text-amber/70 flex-shrink-0" />
           </a>
         </div>
 
-      </div>
+        {/* Help */}
+        <div className="mx-3 mb-5 p-4 bg-white/5 rounded-xl">
+          <div className="flex items-center gap-2 mb-1">
+            <HelpCircle size={13} className="text-white/30" />
+            <span className="text-xs font-semibold text-white/60">Need help?</span>
+          </div>
+          <p className="text-[11px] text-white/25 leading-relaxed">
+            Reach out to support or check our docs.
+          </p>
+        </div>
+      </aside>
     </>
   )
 }
