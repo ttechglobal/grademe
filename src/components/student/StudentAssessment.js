@@ -9,6 +9,35 @@ import MathRenderer        from '@/components/ui/MathRenderer'
 import ExplanationRenderer from '@/components/ui/ExplanationRenderer'
 import { cn } from '@/lib/utils'
 
+// ── Copy-protection hook ──────────────────────────────────────────────────
+// Applied only on TestScreen and ReviewScreen — never on StartScreen.
+// Cleans up all listeners automatically when the component unmounts.
+function useCopyProtection(active = true) {
+  useEffect(() => {
+    if (!active) return
+
+    const blockContext  = (e) => e.preventDefault()
+    const blockDrag     = (e) => e.preventDefault()
+    const blockShortcut = (e) => {
+      if ((e.ctrlKey || e.metaKey) &&
+          ['c', 'a', 'x', 'u'].includes(e.key.toLowerCase())) {
+        e.preventDefault()
+      }
+    }
+
+    document.addEventListener('contextmenu', blockContext)
+    document.addEventListener('dragstart',   blockDrag)
+    document.addEventListener('keydown',     blockShortcut)
+
+    return () => {
+      document.removeEventListener('contextmenu', blockContext)
+      document.removeEventListener('dragstart',   blockDrag)
+      document.removeEventListener('keydown',     blockShortcut)
+    }
+  }, [active])
+}
+
+
 // ── Storage helpers ────────────────────────────────────────────────────────
 const HISTORY_KEY = 'grademee_student_history'
 const MAX_HISTORY  = 30
@@ -483,6 +512,9 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
     if (timedOut && !submitting) handleSubmit(true)
   }, [timedOut])
 
+  // Block copying during the assessment
+  useCopyProtection(true)
+
   const handleSubmit = useCallback(async (auto = false) => {
     if (submitting) return
     if (!auto && answered < questions.length) {
@@ -494,7 +526,10 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
   }, [answers, answered, questions.length, submitting, onSubmit])
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5] flex flex-col">
+    <div
+      className="min-h-screen bg-[#f7f7f5] flex flex-col"
+      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+    >
 
       {/* Top bar */}
       <div className="bg-brand-900 px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-lg">
@@ -658,6 +693,8 @@ function ResultScreen({ score, correct, total, onReview }) {
 function ReviewScreen({ assessment, answers, onDone }) {
   const questions = assessment.questions ?? []
   const [idx, setIdx] = useState(0)
+  // Block copying on the review screen
+  useCopyProtection(true)
   const q = questions[idx]
   if (!q) return null
 
@@ -665,7 +702,10 @@ function ReviewScreen({ assessment, answers, onDone }) {
   const ok  = sa.toUpperCase() === (q.answer ?? '').toUpperCase()
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5] flex flex-col">
+    <div
+      className="min-h-screen bg-[#f7f7f5] flex flex-col"
+      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+    >
 
       {/* Top bar */}
       <div className="bg-brand-900 px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
