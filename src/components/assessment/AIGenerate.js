@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { parseAIResponse } from '@/lib/parseAIResponse'
 import { createClient } from '@/lib/supabase/client'
 import MathRenderer from '@/components/ui/MathRenderer'
 import {
@@ -26,120 +27,165 @@ const ASSESSMENT_TYPE_CONTEXT = {
   test:       'a formal test or exam (questions should vary in difficulty — some straightforward, some challenging)',
 }
 
+// ── Grade-level reference used in prompt ──────────────────────────────────
+function gradeContext(classLevel) {
+  const g = (classLevel ?? '').toLowerCase().replace(/_/g, ' ')
+  // University — check first
+  if (/university|tertiary|degree|undergraduate/i.test(g))
+    return { band: 'University', desc: 'Advanced vocabulary, critical thinking, professional terminology.' }
+  // Grade 10-12: SS (Senior Secondary), Year/Grade 10+, A-Level, GCSE
+  // Must come before Grade 1-3 to avoid "year 10" matching "year [1-3]"
+  if (/year 1[0-3]\b|grade 1[0-2]\b|\bss [1-3]\b|form [4-6]|a[.-]level|gcse/i.test(g))
+    return { band: 'Grade 10–12', desc: 'Subject-appropriate vocabulary, analytical thinking, exam-standard questions.' }
+  // Grade 1-3
+  if (/\bgrade [1-3]\b|year [1-3]\b|class [1-3]\b|ks1|primary [1-3]/i.test(g))
+    return { band: 'Grade 1–3', desc: 'Very simple words, short sentences, basic everyday concepts. No technical terms at all.' }
+  // Grade 4-6
+  if (/\bgrade [4-6]\b|year [4-6]\b|class [4-6]\b|primary [4-6]/i.test(g))
+    return { band: 'Grade 4–6', desc: 'Simple vocabulary, familiar school topics, slightly longer sentences. Explain any term used.' }
+  // Grade 7-9: JSS (Junior Secondary), Year/Grade 7-9
+  if (/\bgrade [7-9]\b|year [7-9]\b|class [7-9]\b|\bjss\b|form [1-3]/i.test(g))
+    return { band: 'Grade 7–9', desc: 'Moderate vocabulary, multi-step thinking, curriculum-standard concepts. Keep sentences clear.' }
+  // Default fallback
+  return { band: g || 'the selected class', desc: 'Match the expected curriculum level for this class.' }
+}
+
 function buildPrompt({ topic, description, subject, classLevel, assessmentType, numQuestions, curriculum }) {
   const currContext  = CURRICULUM_CONTEXT[curriculum]  ?? CURRICULUM_CONTEXT.other
   const typeContext  = ASSESSMENT_TYPE_CONTEXT[assessmentType] ?? ASSESSMENT_TYPE_CONTEXT.quiz
   const classDisplay = classLevel?.replace(/_/g, ' ')?.toUpperCase() ?? 'the class'
   const subjDisplay  = subject?.replace(/_/g, ' ') ?? 'the subject'
+  const grade        = gradeContext(classLevel)
 
   const descriptionLine = description?.trim()
     ? `\nAdditional context: "${description.trim()}"\n`
     : ''
 
-  // Classify subject type
-  const calcSubjects = ['mathematics', 'maths', 'math', 'physics', 'chemistry', 'statistics',
-    'further mathematics', 'further_mathematics']
+  const calcSubjects = ['mathematics', 'maths', 'math', 'physics', 'chemistry',
+    'statistics', 'further mathematics', 'further_mathematics']
   const isCalc = calcSubjects.some((s) => subjDisplay.toLowerCase().includes(s))
 
+  // ── Explanation format — full spec ──────────────────────────────────────
   const explanationFormat = isCalc
-    ? `EXPLANATION FORMAT — CALCULATION SUBJECT (${subjDisplay}):
+    ? `EXPLANATION FORMAT — CALCULATION SUBJECT:
 
-Use \\n between EVERY line. The explanation field is one JSON string — use \\n for line breaks.
+You are writing this explanation for a ${grade.band} student who just got this question wrong.
+Your goal: a student who has NEVER seen this topic before should read this and fully understand it.
 
-STRUCTURE (in order):
-1. ONE intro sentence — plain English, no maths
-2. "Key Formula: [formula]"  ← only if a formula applies
-3. Variable definitions, one per line: "[symbol] = [value and meaning]"
-4. Numbered steps — follow the STEP FORMAT below exactly
-5. "Answer: [final answer with units]"
+ASSUME NOTHING. Do not skip any step. Do not explain a term without defining it first.
 
-STEP FORMAT — THIS IS CRITICAL:
-Each step has TWO parts:
-  Part A — "Step N: [SHORT LABEL — 4 words max]"
-  Part B — The working, one operation per line beneath it
+LANGUAGE RULES:
+- Maximum 15 words per sentence. If longer, split it.
+- Never use: "therefore", "hence", "thus". Use "so", "because", "this means".
+- Every sentence and every line of working gets its own line (use \\n between EVERY line)
+- Wrap ALL maths in $...$: $\\frac{7}{10}$ not 7/10, $250 \\times 3.5$ not 250*3.5
 
-CORRECT EXAMPLE (short label, working below):
-Step 1: Find GCF
-GCF of 16 and 100 = 4
+MATHEMATICAL WORKING RULES — THESE ARE THE MOST IMPORTANT RULES:
 
-Step 2: Factor out GCF
-16x^2 - 100 = 4(4x^2 - 25)
+RULE 1: SHOW the calculation — never just DESCRIBE it.
+BAD: "We subtract 3 from 7 to get 4"
+GOOD: $7 - 3 = 4$
 
-Step 3: Difference of squares
-4x^2 - 25 = (2x)^2 - 5^2 = (2x - 5)(2x + 5)
+BAD: "Multiplying 250 by 3.5 gives 875"
+GOOD: $250 \\times 3.5 = 875$
 
-Step 4: Write final answer
-4(2x - 5)(2x + 5)
-Answer: 4(2x - 5)(2x + 5)
+RULE 2: Show every transformation on its own line.
+Never jump from the question to the answer.
+Each line must show the expression changing from one form to the next.
+Example for $\\frac{7}{10} - \\frac{3}{10}$:
+$\\frac{7}{10} - \\frac{3}{10}$        ← starting expression\\n
+$= \\frac{7 - 3}{10}$                ← show what we are doing\\n
+$= \\frac{4}{10}$                     ← show the result\\n
 
-WRONG — NEVER DO THIS:
-Step 1: Look for the biggest number that goes into both 16 and 100. That number is 4.
-Step 2: Take the 4 out to get 4(4x^2 - 25).
-(These step titles are sentences with the working inside them — wrong format)
+RULE 3: One operation per line. Never combine two steps on one line.
 
-FULL EXAMPLE for a distance/echo question:
-"Use the echo formula — the sound travels to the cliff and back.\\nKey Formula: d = v*t/2\\nv = speed of sound = 250 m/s\\nt = time for echo to return\\nStep 1: First echo (t = 3.5 s)\\nd = 250*3.5/2\\nd = 875/2\\nd = 437.5 m\\nStep 2: Second echo (t = 2.5 s)\\nd = 250*2.5/2\\nd = 625/2\\nd = 312.5 m\\nStep 3: How much closer\\n437.5 - 312.5 = 125\\nAnswer: The cliff is 125 m closer"
+RULE 4: A student must be able to follow the numbers alone.
+Cover the text labels — the working lines must still tell the complete story.
 
-RULES:
-- Step label: SHORT (3–5 words only, NOT a full sentence)
-- Working lines: one operation per line
-- Show EVERY substitution — never skip a calculation step
-- MATHS: wrap ALL mathematical expressions in $...$ so they render correctly
-  Use: $\\frac{875}{2}$ not 875/2 | $250 \\times 3.5$ not 250*3.5
-  Use: $x^2$ not x^2 | $d_1$ not d1 | $m\\,s^{-1}$ not m/s
-  Use: $\\sqrt{9}$ not sqrt(9) | $\\pi$ not pi | $\\pm$ not +-`
-    : `EXPLANATION FORMAT — CONCEPT/LANGUAGE SUBJECT (${subjDisplay}):
+STRUCTURE — follow this EXACTLY:
 
-The explanation field must follow this EXACT structure. Each part on its own line using \\n.
+Step 1: [What are we trying to find? — one simple sentence]\\n
+[Write the formula or rule. Explain what each letter/symbol means.]\\n
+Step 2: [Short label — 3 to 4 words]\\n
+[Show the expression with numbers substituted in — one line]\\n
+[Show each calculation — one operation per line, never skip any]\\n
+Step 3: [Short label — 3 to 4 words]\\n
+[Continue until final answer — one operation per line]\\n
+✅ The answer is [CORRECT ANSWER] because [one simple sentence]\\n
+💡 Remember: [One rule for next time — maximum 10 words]
 
-REQUIRED STRUCTURE:
-1. ONE clear opening sentence that directly states why the correct answer is right — no preamble
-2. TWO to THREE sentences of supporting context that help the student genuinely understand
-3. If the question tests a specific term or concept, add:
-   "Key Concept: [the concept or rule in one sentence]"
-4. For each WRONG option, add a line in this format:
-   "A. [why option A is wrong — one sentence]"
-   "C. [why option C is wrong — one sentence]"
-   "D. [why option D is wrong — one sentence]"
-   (skip the correct answer letter — only list the wrong ones)
+GOOD EXAMPLE — fraction subtraction:
+"Step 1: We need to subtract two fractions with the same bottom number.\\nStep 2: Write the starting expression\\n$\\frac{7}{10} - \\frac{3}{10}$\\nThe bottom numbers (denominators) are the same.\\nSo we only subtract the top numbers.\\nStep 3: Subtract\\n$= \\frac{7 - 3}{10}$\\n$= \\frac{4}{10}$\\n✅ The answer is $\\frac{4}{10}$ because we subtracted the top numbers and kept the same denominator.\\n💡 Remember: Same denominator — only subtract the top numbers."
 
-STRICT RULES:
-- Open with the WHY, not "The correct answer is..."
-- Keep every sentence short enough for a student who got the question wrong to follow
-- The "Key Concept" line should be the one thing they walk away remembering
-- Wrong option explanations should feel educational, not critical
+GOOD EXAMPLE — distance/time:
+"Step 1: We need to find the distance to the cliff.\\nStep 2: Write the formula\\n$d = \\frac{v \\times t}{2}$\\n$v$ = speed = 250 m/s. $t$ = time = 3.5 s.\\nWe divide by 2 because sound travels TO the cliff AND back.\\nStep 3: Substitute the numbers\\n$d = \\frac{250 \\times 3.5}{2}$\\n$d = \\frac{875}{2}$\\n$d = 437.5$ m\\n✅ The answer is 437.5 m because the sound took 3.5 s at 250 m/s to travel there and back.\\n💡 Remember: Divide by 2 in echo questions — sound makes a return trip."`
+    : `EXPLANATION FORMAT — CONCEPT/LANGUAGE SUBJECT:
 
-GOOD EXAMPLE (follow this exactly):
-"Photosynthesis occurs in the chloroplasts because that is where chlorophyll is found, the pigment that absorbs light energy.\\nChlorophyll captures sunlight and uses it to convert carbon dioxide and water into glucose and oxygen.\\nKey Concept: Chloroplasts are the site of photosynthesis in plant cells.\\nA. The mitochondria is where respiration occurs, not photosynthesis.\\nC. The nucleus controls cell activity but is not involved in photosynthesis.\\nD. The vacuole stores water and dissolved substances — it plays no role in photosynthesis."
+You are writing this explanation for a ${grade.band} student who just got this question wrong.
+Your goal: a student who has NEVER studied this topic should read this and fully understand it.
 
-BAD EXAMPLE (never do this):
-"The answer is B. Photosynthesis happens in the chloroplasts."`
+ASSUME NOTHING. Explain every term. Never skip the reason.
 
-  return `You are an expert ${subjDisplay} teacher creating ${typeContext} for ${classDisplay} students following the ${currContext}.
+USE THESE EXACT RULES:
+- Maximum 15 words per sentence. If longer, split into two sentences.
+- Never use: "therefore", "hence", "thus". Use "so", "because", "this means".
+- Every sentence is its own line (use \\n between every single line)
+- Simple words always — if a simpler word exists, use it
 
-Generate exactly ${numQuestions} multiple choice questions on the topic: "${topic}"${descriptionLine}
+STRUCTURE — follow this EXACTLY:
 
-STRICT OUTPUT FORMAT — return ONLY a valid JSON array, nothing else:
+[What IS the correct answer? State it in plain language — one sentence]\\n
+[WHY is it correct? Give the simplest possible reason — one sentence]\\n
+[Help them remember: a context, example, or memory tip — one sentence]\\n
+Key Concept: [The one rule or definition to remember — one sentence]\\n
+[For each WRONG option, one line: "A. [Why option A is wrong — one short sentence]"]\\n
+✅ The answer is [CORRECT ANSWER] because [one simple sentence]\\n
+💡 Remember: [One simple rule for next time — maximum 10 words]
+
+GOOD EXAMPLE (use this quality as your standard):
+"Photosynthesis happens in the chloroplasts.\\nChloroplasts contain chlorophyll — the green pigment that captures light.\\nThink of chloroplasts as the plant's solar panels.\\nKey Concept: Chloroplasts are where plants make their food using light.\\nA. The mitochondria releases energy from food — it does not make food.\\nC. The nucleus controls the cell but is not involved in photosynthesis.\\nD. The vacuole stores water and has no role in photosynthesis.\\n✅ The answer is B because chloroplasts are the only organelle that carries out photosynthesis.\\n💡 Remember: Chloroplasts do photosynthesis — mitochondria do respiration."`
+
+  return `You are an expert ${subjDisplay} teacher.
+You are creating ${typeContext} questions for ${classDisplay} students following the ${currContext}.
+
+═══════════════════════════════════════════
+GRADE LEVEL: ${grade.band}
+${grade.desc}
+═══════════════════════════════════════════
+
+GRADE-LEVEL RULES — NON-NEGOTIABLE:
+- Every question must be written for a ${grade.band} student — not younger, not older
+- Vocabulary: use only words a ${grade.band} student would know
+- Sentence length: match the reading level of ${grade.band}
+- Concepts: stay within the ${grade.band} curriculum — never introduce higher-grade concepts
+- Numbers and values: appropriate complexity for ${grade.band}
+- Examples and contexts: relatable to a ${grade.band} student's life and experience
+
+TOPIC: "${topic}"${descriptionLine}
+
+OUTPUT FORMAT — return ONLY a valid JSON array, nothing else:
 [
   {
-    "question": "Full question text",
+    "question": "Full question text — written for ${grade.band}",
     "type": "mcq",
     "options": ["A. first option", "B. second option", "C. third option", "D. fourth option"],
     "answer": "B",
-    "hint": "One sentence that helps the student think — does NOT give away the answer",
-    "explanation": "see format rules below"
+    "hint": "One sentence nudge — does NOT give away the answer — appropriate for ${grade.band}",
+    "explanation": "see explanation format below"
   }
 ]
-
-${explanationFormat}
 
 QUESTION RULES:
 - Generate exactly ${numQuestions} questions
 - Every question MUST have exactly 4 options: A, B, C, D
-- SHUFFLE the correct answer — do not always put it as option A
-- Match difficulty level appropriately for ${classDisplay}
-- Return ONLY the JSON array — no markdown, no preamble, no extra text`
+- SHUFFLE the correct answer — do not always put it as A or B
+- Questions must genuinely test understanding, not just recall
+- Return ONLY the JSON array — no markdown, no preamble, no extra text
+
+${explanationFormat}
+`
 }
+
 
 export default function AIGenerate({ setupData = null, onImport }) {
   // ── Null-safe defaults — works both from wizard (setupData set) ──────────
@@ -157,6 +203,7 @@ export default function AIGenerate({ setupData = null, onImport }) {
   const [copied,       setCopied]       = useState(false)
   const [pasted,       setPasted]       = useState('')
   const [error,        setError]        = useState('')
+  const [partialMsg,    setPartialMsg]    = useState('')
   const [loading,      setLoading]      = useState(false)
   const [parsed,       setParsed]       = useState([])
   const [selected,     setSelected]     = useState(new Set())
@@ -199,8 +246,8 @@ export default function AIGenerate({ setupData = null, onImport }) {
 
   const prompt = canGeneratePrompt
     ? buildPrompt({
-        topic,
-        description,
+        topic: topic,
+        description: description,
         subject:        effectiveSubject,
         classLevel:     effectiveClassLevel,
         assessmentType: effectiveType,
@@ -218,34 +265,20 @@ export default function AIGenerate({ setupData = null, onImport }) {
 
   const handleParse = () => {
     setError('')
+    setPartialMsg('')
     setLoading(true)
-    try {
-      const clean  = pasted.replace(/```json/gi, '').replace(/```/g, '').trim()
-      const match  = clean.match(/\[[\s\S]*\]/)
-      if (!match) throw new Error('No JSON array found')
-      const result = JSON.parse(match[0])
-      if (!Array.isArray(result) || result.length === 0) throw new Error('Empty array')
 
-      const mapped = result
-        .map((q) => ({
-          id:          Math.random().toString(36).slice(2),
-          type:        'mcq',
-          text:        q.question || q.text || '',
-          options:     Array.isArray(q.options) && q.options.length === 4
-                         ? q.options
-                         : ['A. Option A', 'B. Option B', 'C. Option C', 'D. Option D'],
-          answer:      q.answer      || 'A',
-          hint:        q.hint        || '',
-          explanation: q.explanation || '',
-        }))
-        .filter((q) => q.text.trim().length > 0)
+    const result = parseAIResponse(pasted)
 
-      if (mapped.length === 0) throw new Error('No valid questions found')
-      setParsed(mapped)
-      setSelected(new Set(mapped.map((q) => q.id)))
-    } catch (err) {
-      setError(`Could not parse: ${err.message}. Make sure you copied the full JSON array.`)
+    if (!result.ok) {
+      setError(result.errorMessage)
+      setLoading(false)
+      return
     }
+
+    setParsed(result.questions)
+    setSelected(new Set(result.questions.map((q) => q.id)))
+    if (result.partialMessage) setPartialMsg(result.partialMessage)
     setLoading(false)
   }
 
@@ -453,15 +486,29 @@ export default function AIGenerate({ setupData = null, onImport }) {
               <label className="text-sm font-semibold text-ink-2">Paste the AI response here</label>
               <textarea
                 value={pasted}
-                onChange={(e) => { setPasted(e.target.value); setError('') }}
+                onChange={(e) => { setPasted(e.target.value); setError(''); setPartialMsg('') }}
                 placeholder={'[\n  {\n    "question": "...",\n    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],\n    "answer": "B"\n  }\n]'}
                 rows={8}
                 className="w-full px-4 py-3 text-sm font-mono bg-white border border-border rounded-xl outline-none focus:border-brand-500 resize-none placeholder:text-ink-4"
               />
               {error && (
-                <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 text-sm text-danger flex items-start gap-2">
-                  <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-                  <p>{error}</p>
+                <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 text-sm text-danger flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                    <p>{error}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setPasted(''); setError('') }}
+                    className="self-start text-xs font-bold text-danger underline hover:no-underline"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              )}
+              {partialMsg && !error && (
+                <div className="bg-amber-light border border-amber/20 rounded-xl px-4 py-3 text-sm text-amber">
+                  {partialMsg}
                 </div>
               )}
             </div>

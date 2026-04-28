@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { parseAIResponse } from '@/lib/parseAIResponse'
 import MathRenderer from '@/components/ui/MathRenderer'
 import { Copy, CheckCheck, Sparkles, AlertCircle, GripVertical, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -8,13 +9,15 @@ import { cn } from '@/lib/utils'
 // ── AI extraction prompt ───────────────────────────────────────────────────
 // Instructs the AI to produce explanations in the rich structured format
 // that ExplanationRenderer knows how to display.
-const PROMPT = `You are an expert question extractor and educator. Extract ALL questions from the content I give you and return a JSON array.
+const PROMPT = `You are an expert question extractor and educator.
+Extract ALL questions from the content I give you and return them as a JSON array.
 
-CRITICAL RULES:
-- Return ONLY a valid JSON array — no text before or after, no markdown, no code blocks
-- Every question MUST have exactly 4 answer options (A, B, C, D)
-- SHUFFLE option positions — correct answer should NOT always be A
+CRITICAL OUTPUT RULES:
+- Return ONLY a valid JSON array — no text before, no text after, no markdown
+- Every question MUST have exactly 4 options: A, B, C, D
 - The "answer" field must be the letter ONLY: "A", "B", "C", or "D"
+- For fill-in questions: convert to MCQ — use the correct answer + 3 plausible wrong answers
+- For true/false: A. True  B. False  C. Cannot be determined  D. None of the above
 
 FORMAT (follow exactly):
 [
@@ -23,61 +26,52 @@ FORMAT (follow exactly):
     "type": "mcq",
     "options": ["A. option", "B. option", "C. option", "D. option"],
     "answer": "B",
-    "hint": "One sentence that helps the student think — does NOT give away the answer",
-    "explanation": "see format rules below"
+    "hint": "One sentence nudge — does NOT give away the answer",
+    "explanation": "see explanation format below"
   }
 ]
 
-OPTIONS RULES:
-- Always exactly 4 options: A, B, C, D
-- For fill-in questions: convert to MCQ — correct answer + 3 plausible wrong answers
-- For true/false: A. True  B. False  C. Cannot be determined  D. None of the above
+EXPLANATION FORMAT FOR CALCULATION SUBJECTS (Maths, Physics, Chemistry):
 
-MATHS/CALCULATION EXPLANATION FORMAT:
-Use this exact structure, parts separated by \\n:
+Write for a ${grade.band} student who just got this wrong and may not know the topic.
+Use \\n between every single line. Maximum 15 words per sentence.
 
-1. "Key Formula: [formula in plain text]"  ← only if a formula applies
-2. Variable definitions — one per line: "[symbol] = [value and meaning]"
-3. Numbered steps — CRITICAL FORMAT:
-   Step label: SHORT (3–5 words, NOT a sentence)
-   Working:    one operation per line BENEATH the label
+MOST IMPORTANT RULES — SHOW THE WORKING, DO NOT JUST DESCRIBE IT:
+BAD: "We subtract 3 from 7 to get 4"   GOOD: $7 - 3 = 4$
+BAD: "Multiplying gives 875"             GOOD: $250 \\times 3.5 = 875$
 
-CORRECT FORMAT:
-Step 1: Find GCF
-GCF of 16 and 100 = 4
-Step 2: Factor out GCF
-16x^2 - 100 = 4(4x^2 - 25)
-Step 3: Write answer
-4(2x - 5)(2x + 5)
-Answer: 4(2x - 5)(2x + 5)
+Show every transformation on its own line. Never jump from question to answer.
+Every line of working must be wrapped in $...$
 
-WRONG FORMAT (never do this — full sentences inside step labels):
-Step 1: Look for the biggest number that goes into both 16 and 100. That number is 4.
-Step 2: Take the 4 out to get 4(4x^2 - 25).
+STRUCTURE:
+Step 1: [What are we finding — one simple sentence]\\n
+[Write the formula — explain what each letter means]\\n
+Step 2: [Short label — 3 to 4 words]\\n
+[Show the numbers substituted in — one line]\\n
+[Each calculation on its own line — never skip]\\n
+Step 3: [Short label — 3 to 4 words]\\n
+[Continue until final answer]\\n
+✅ The answer is [CORRECT ANSWER] because [one simple sentence]\\n
+💡 Remember: [One rule for next time — maximum 10 words]
 
-GOOD EXAMPLE for area:
-"Key Formula: Area = length x width\\nStep 1: Identify values\\nlength = 8 cm\\nwidth = 5 cm\\nStep 2: Substitute\\nArea = 8 x 5\\nStep 3: Calculate\\nArea = 40 cm^2\\nAnswer: Area = 40 cm^2"
+GOOD CALC EXAMPLE:
+"Step 1: We need to find the area of the rectangle.\\nStep 2: Write the formula\\n$Area = length \\times width$\\nLength = 8 cm. Width = 5 cm.\\nStep 3: Substitute and calculate\\n$Area = 8 \\times 5$\\n$Area = 40$ cm²\\n✅ The answer is 40 cm² because we multiply length by width to find area.\\n💡 Remember: Area of a rectangle = length × width."
 
-MATHS NOTATION — wrap all mathematical expressions in $...$:
-  Use $\\frac{8}{5}$ not 8/5 | Use $8 \\times 5$ not 8*5 or 8x5
-  Use $x^2$ not x^2 | Use $d_1$ not d1 | Use $m\\,s^{-1}$ not m/s
-  Use $\\sqrt{9}$ not sqrt(9) | Use $\\pi$ not pi | Use $\\pm$ not +-
+EXPLANATION FORMAT FOR CONCEPT SUBJECTS (English, History, Biology, Geography, etc.):
 
+Write for a student who just got this wrong. Simple words. Short sentences. Assume nothing.
+Use \\n between every single line.
 
-
-CONCEPT/LANGUAGE EXPLANATION FORMAT (English, History, Biology, Economics, etc.):
-Use this exact structure (parts separated by \\n):
-1. One sentence saying WHY the correct answer is right
-2. Two or three sentences of supporting context
-3. "Key Concept: [the rule or idea to remember]"
-4. For each WRONG option — one line per option:
-   "A. [why option A is wrong]"
-   "C. [why option C is wrong]"
-   "D. [why option D is wrong]"
-(skip the correct answer letter — only list the wrong ones)
+STRUCTURE:
+[What the correct answer IS — plain language, one sentence]\\n
+[WHY it is correct — simplest possible reason, one sentence]\\n
+Key Concept: [The one thing to remember — one sentence]\\n
+[For each wrong option: "A. Why option A is wrong — one short sentence"]\\n
+✅ The answer is [CORRECT ANSWER] because [one simple sentence]\\n
+💡 Remember: [One rule for next time — maximum 10 words]
 
 GOOD CONCEPT EXAMPLE:
-"Photosynthesis occurs in the chloroplasts because that is where chlorophyll is found.\\nChlorophyll absorbs light energy and uses it to convert CO2 and water into glucose and oxygen.\\nKey Concept: Chloroplasts are the site of photosynthesis in plant cells.\\nA. The mitochondria is where respiration occurs, not photosynthesis.\\nC. The nucleus controls cell activity — it is not involved in photosynthesis.\\nD. The vacuole stores water and dissolved substances only."
+"Photosynthesis happens in the chloroplasts.\\nChloroplasts contain chlorophyll which captures light energy.\\nKey Concept: Chloroplasts are where plants make food using light.\\nA. The mitochondria releases energy — it does not make food.\\nC. The nucleus controls the cell but is not involved in photosynthesis.\\nD. The vacuole stores water only.\\n✅ The answer is B because only chloroplasts carry out photosynthesis.\\n💡 Remember: Chloroplasts do photosynthesis — mitochondria do respiration."
 
 Extract EVERY question. Return ONLY the JSON array.`
 
@@ -85,6 +79,7 @@ export default function AIImport({ onImport }) {
   const [pasted,    setPasted]    = useState('')
   const [copied,    setCopied]    = useState(false)
   const [error,     setError]     = useState('')
+  const [partialMsg, setPartialMsg] = useState('')
   const [loading,   setLoading]   = useState(false)
   const [parsed,    setParsed]    = useState([])
   const [selected,  setSelected]  = useState(new Set())
@@ -98,35 +93,20 @@ export default function AIImport({ onImport }) {
 
   const handleParse = () => {
     setError('')
+    setPartialMsg('')
     setLoading(true)
-    try {
-      const clean  = pasted.replace(/```json/gi, '').replace(/```/g, '').trim()
-      const match  = clean.match(/\[[\s\S]*\]/)
-      if (!match) throw new Error('No JSON array found')
 
-      const result = JSON.parse(match[0])
-      if (!Array.isArray(result) || result.length === 0) throw new Error('Empty or invalid response')
+    const result = parseAIResponse(pasted)
 
-      const mapped = result
-        .map((q) => ({
-          id:          Math.random().toString(36).slice(2),
-          type:        'mcq',
-          text:        q.question || q.text || '',
-          options:     Array.isArray(q.options) && q.options.length === 4
-                         ? q.options
-                         : ['A. Option A', 'B. Option B', 'C. Option C', 'D. Option D'],
-          answer:      q.answer      || 'A',
-          hint:        q.hint        || '',
-          explanation: q.explanation || '',
-        }))
-        .filter((q) => q.text.trim().length > 0)
-
-      if (mapped.length === 0) throw new Error('No valid questions found')
-      setParsed(mapped)
-      setSelected(new Set(mapped.map((q) => q.id)))
-    } catch (err) {
-      setError(`Could not parse: ${err.message}. Make sure you copied the full JSON array.`)
+    if (!result.ok) {
+      setError(result.errorMessage)
+      setLoading(false)
+      return
     }
+
+    setParsed(result.questions)
+    setSelected(new Set(result.questions.map((q) => q.id)))
+    if (result.partialMessage) setPartialMsg(result.partialMessage)
     setLoading(false)
   }
 
@@ -215,15 +195,29 @@ export default function AIImport({ onImport }) {
           <label className="text-sm font-semibold text-ink-2">Paste AI Response Here</label>
           <textarea
             value={pasted}
-            onChange={(e) => { setPasted(e.target.value); setError('') }}
+            onChange={(e) => { setPasted(e.target.value); setError(''); setPartialMsg('') }}
             placeholder={'[\n  {\n    "question": "...",\n    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],\n    "answer": "B",\n    "explanation": "..."\n  }\n]'}
             rows={10}
             className="w-full px-4 py-3 text-sm font-mono bg-white border border-border rounded-xl outline-none focus:border-brand-500 resize-none placeholder:text-ink-4"
           />
           {error && (
-            <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 text-sm text-danger flex items-start gap-2">
-              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-              <p>{error}</p>
+            <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 text-sm text-danger flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                <p>{error}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPasted(''); setError('') }}
+                className="self-start text-xs font-bold text-danger underline hover:no-underline"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+          {partialMsg && !error && (
+            <div className="bg-amber-light border border-amber/20 rounded-xl px-4 py-3 text-sm text-amber">
+              {partialMsg}
             </div>
           )}
         </div>

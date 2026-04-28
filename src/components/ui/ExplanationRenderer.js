@@ -82,12 +82,13 @@ function toLines(raw, stem = false) {
 // ── Parse flat lines → structured STEM blocks ──────────────────────────────
 function parseStem(lines) {
   const result = {
-    formula:   null,   // "Key Formula: ..." → extracted formula text
-    variables: [],     // variable definition lines
-    prose:     [],     // intro text before first step
-    steps:     [],     // [{ num, title, working: [{isAnswer, text}] }]
-    answer:    null,   // standalone "Answer: ..."
-    remember:  null,   // "Remember: ..." or "💡 ..."
+    formula:         null,   // "Key Formula: ..." → extracted formula text
+    variables:       [],     // variable definition lines
+    prose:           [],     // intro text before first step
+    steps:           [],     // [{ num, title, working: [{isAnswer, text}] }]
+    answer:          null,   // standalone "Answer: ..."
+    answerStatement: null,   // "✅ The answer is X because Y" — bold green
+    remember:        null,   // "Remember: ..." or "💡 ..."
   }
 
   let cur        = null   // current step being built
@@ -105,6 +106,13 @@ function parseStem(lines) {
       const text = line.replace(/^answer\s*:\s*/i, '').trim()
       result.answer = text
       cur?.working.push({ isAnswer: true, text })
+      continue
+    }
+
+    // ✅ The answer is ... — bold green answer statement
+    if (line.startsWith('✅')) {
+      result.answerStatement = line
+      if (cur) cur.working.push({ isAnswerStatement: true, text: line })
       continue
     }
 
@@ -278,8 +286,13 @@ function STEMExplanation({ blocks, rawLines, hint, score, showClosing }) {
                   {step.working.length > 0 && (
                     <div className="bg-[#f8f9fc] border border-brand-100 rounded-xl px-4 py-3 flex flex-col gap-1.5 overflow-x-auto">
                       {step.working.map((w, wi) =>
-                        w.isAnswer ? (
-                          /* Answer within step — visually distinct */
+                        w.isAnswerStatement ? (
+                          /* ✅ Bold green answer statement */
+                          <p key={wi} className="text-sm font-bold text-success leading-relaxed pt-1">
+                            <MathRenderer text={w.text} />
+                          </p>
+                        ) : w.isAnswer ? (
+                          /* Answer: ... chip */
                           <div key={wi} className="flex items-center gap-2 pt-2 mt-1 border-t border-brand-100">
                             <span className="text-xs font-bold text-success flex-shrink-0">✓</span>
                             <span className="text-sm font-bold text-success">
@@ -324,6 +337,13 @@ function STEMExplanation({ blocks, rawLines, hint, score, showClosing }) {
           </div>
         )}
 
+        {/* ✅ Bold answer statement */}
+        {blocks.answerStatement && (
+          <p className="text-sm font-bold text-success leading-relaxed">
+            <MathRenderer text={blocks.answerStatement} />
+          </p>
+        )}
+
         {/* Remember callout */}
         {remember && (
           <div className="bg-amber-light/60 border border-amber/20 rounded-xl px-4 py-3">
@@ -352,12 +372,14 @@ function STEMExplanation({ blocks, rawLines, hint, score, showClosing }) {
 
 // ── Non-STEM clean paragraph renderer ─────────────────────────────────────
 function ConceptExplanation({ lines, hint, score, showClosing }) {
-  const isRemember = (l) => /^(?:💡|remember(?:\s+this)?:|key\s+concept:)/i.test(l)
-  const isWrong    = (l) => /^[A-D][.)]\s/.test(l)
+  const isRemember       = (l) => /^(?:💡|remember(?:\s+this)?:|key\s+concept:)/i.test(l)
+  const isWrong          = (l) => /^[A-D][.)]\s/.test(l)
+  const isAnswerStatement = (l) => l.startsWith('\u2705')
 
-  const proseLines   = lines.filter((l) => !isRemember(l) && !isWrong(l))
-  const wrongLines   = lines.filter(isWrong)
-  const rememberLine = lines.find(isRemember)
+  const proseLines       = lines.filter((l) => !isRemember(l) && !isWrong(l) && !isAnswerStatement(l))
+  const wrongLines       = lines.filter(isWrong)
+  const rememberLine     = lines.find(isRemember)
+  const answerStatLine   = lines.find(isAnswerStatement)
 
   const rememberText = rememberLine
     ?.replace(/^(?:💡\s*)?(?:remember(?:\s+this)?:|key\s+concept:)\s*/i, '') ?? ''
@@ -407,6 +429,13 @@ function ConceptExplanation({ lines, hint, score, showClosing }) {
         )}
 
         {/* Remember */}
+        {/* ✅ Bold answer statement */}
+        {answerStatLine && (
+          <p className="text-sm font-bold text-success leading-relaxed pt-1">
+            <MathRenderer text={answerStatLine} />
+          </p>
+        )}
+
         {rememberText && (
           <div className="bg-amber-light/60 border border-amber/20 rounded-xl px-4 py-3">
             <p className="text-sm text-amber font-medium">
@@ -448,8 +477,7 @@ export default function ExplanationRenderer({
 }) {
   // Debug log — remove once confirmed working
   if (typeof window !== 'undefined') {
-    console.log('[ER]', subject, '|', explanation?.length ?? 0, 'chars |',
-      JSON.stringify((explanation ?? '').slice(0, 100)))
+    console.log('[ER FULL]', subject, '\n' + (explanation ?? ''))
   }
 
   if (!explanation?.trim() && !hint?.trim()) return null
