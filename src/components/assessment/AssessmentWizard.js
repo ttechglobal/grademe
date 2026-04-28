@@ -2,11 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import StepSetup     from './StepSetup'
-import StepQuestions from './StepQuestions'
-import StepShare     from './StepShare'
+import StepQuestionType from './StepQuestionType'
+import StepSetup        from './StepSetup'
+import StepQuestions    from './StepQuestions'
+import StepShare        from './StepShare'
 import { cn } from '@/lib/utils'
 
+// Steps shown in the progress indicator (steps 1–3 are the existing flow).
+// Step 0 is the question-type picker — it acts as a pre-flight screen before
+// the numbered wizard begins and does not appear in the step indicator.
 const STEPS = [
   { number: 1, label: 'Setup'     },
   { number: 2, label: 'Questions' },
@@ -15,7 +19,13 @@ const STEPS = [
 
 export default function AssessmentWizard({ curriculum = 'uk' }) {
   const router = useRouter()
-  const [step, setStep] = useState(1)
+
+  // step 0 = question type picker (new pre-flight screen)
+  // step 1 = Setup, step 2 = Questions, step 3 = Share (unchanged)
+  const [step, setStep] = useState(0)
+
+  // The selected question type — set on step 0, carried through the rest of the flow
+  const [questionType, setQuestionType] = useState(null)
 
   const [setupData, setSetupData] = useState({
     subject:        '',
@@ -39,47 +49,64 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   const updateSetup = (field, value) =>
     setSetupData((prev) => ({ ...prev, [field]: value }))
 
+  // Called by StepQuestionType when the tutor picks a type
+  const handleTypeSelect = (typeId) => {
+    setQuestionType(typeId)
+    // Sync questionMode in setupData so downstream components know the type
+    updateSetup('questionMode', typeId === 'true_false' ? 'true_false' : 'mcq')
+    setStep(1)
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
 
-      {/* Step indicator */}
-      <div className="flex items-center gap-0 mb-10">
-        {STEPS.map((s, i) => (
-          <div key={s.number} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center gap-1.5">
-              <div className={cn(
-                'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors',
-                step === s.number ? 'bg-brand-800 text-white' :
-                step > s.number  ? 'bg-success text-white'   : 'bg-border text-ink-4'
-              )}>
-                {step > s.number ? '✓' : s.number}
+      {/* Step indicator — only visible once the wizard proper begins (step >= 1) */}
+      {step >= 1 && (
+        <div className="flex items-center gap-0 mb-10">
+          {STEPS.map((s, i) => (
+            <div key={s.number} className="flex items-center flex-1 last:flex-none">
+              <div className="flex flex-col items-center gap-1.5">
+                <div className={cn(
+                  'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors',
+                  step === s.number ? 'bg-brand-800 text-white' :
+                  step > s.number  ? 'bg-success text-white'   : 'bg-border text-ink-4'
+                )}>
+                  {step > s.number ? '✓' : s.number}
+                </div>
+                <span className={cn(
+                  'text-xs font-medium whitespace-nowrap',
+                  step === s.number ? 'text-brand-700' : 'text-ink-4'
+                )}>
+                  {s.label}
+                </span>
               </div>
-              <span className={cn(
-                'text-xs font-medium whitespace-nowrap',
-                step === s.number ? 'text-brand-700' : 'text-ink-4'
-              )}>
-                {s.label}
-              </span>
+              {i < STEPS.length - 1 && (
+                <div className={cn(
+                  'flex-1 h-0.5 mx-2 mb-4 transition-colors',
+                  step > s.number ? 'bg-success' : 'bg-border'
+                )} />
+              )}
             </div>
-            {i < STEPS.length - 1 && (
-              <div className={cn(
-                'flex-1 h-0.5 mx-2 mb-4 transition-colors',
-                step > s.number ? 'bg-success' : 'bg-border'
-              )} />
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Step content */}
       <div className="bg-white border border-border rounded-3xl p-8 shadow-card">
+
+        {/* Step 0 — Question type picker (pre-flight screen, not in step indicator) */}
+        {step === 0 && (
+          <StepQuestionType onSelect={handleTypeSelect} />
+        )}
 
         {step === 1 && (
           <StepSetup
             data={setupData}
             onChange={updateSetup}
             onNext={() => setStep(2)}
+            onBack={() => setStep(0)}          // ← back returns to type picker
             accountCurriculum={curriculum}
+            questionType={questionType}         // passed for display / future use
           />
         )}
 

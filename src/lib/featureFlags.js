@@ -21,7 +21,7 @@ export const FLAGS = {
   EXPLANATION_RENDERER:  true,    // Rich explanation formatting
 
   // ── Coming soon — flip to true when ready ─────────────────────────────
-  TRUE_FALSE_QUESTIONS:  false,   // True/False question type
+  TRUE_FALSE_QUESTIONS:  true,    // True/False question type
   SHORT_ANSWER:          false,   // Short answer question type
   STEPWISE_QUESTIONS:    false,   // Stepwise worked-solution questions
   IN_APP_AI:             false,   // Direct AI generation (no copy-paste)

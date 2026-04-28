@@ -33,7 +33,7 @@ FORMAT (follow exactly):
 
 EXPLANATION FORMAT FOR CALCULATION SUBJECTS (Maths, Physics, Chemistry):
 
-Write for a ${grade.band} student who just got this wrong and may not know the topic.
+Write for a student who just got this wrong and may not know the topic.
 Use \\n between every single line. Maximum 15 words per sentence.
 
 MOST IMPORTANT RULES — SHOW THE WORKING, DO NOT JUST DESCRIBE IT:

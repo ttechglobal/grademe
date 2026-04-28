@@ -128,7 +128,7 @@ function Toggle({ enabled, onToggle, label }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function StepSetup({ data, onChange, onNext, accountCurriculum = 'uk' }) {
+export default function StepSetup({ data, onChange, onNext, onBack, accountCurriculum = 'uk', questionType }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -358,7 +358,14 @@ export default function StepSetup({ data, onChange, onNext, accountCurriculum = 
         )}
       </div>
 
-      <div className="flex justify-end pt-2">
+      <div className="flex items-center justify-between pt-2">
+        {onBack ? (
+          <Button variant="secondary" onClick={onBack}>
+            ← Back
+          </Button>
+        ) : (
+          <div />
+        )}
         <Button variant="primary" onClick={onNext} disabled={!isValid}>
           Continue →
         </Button>
