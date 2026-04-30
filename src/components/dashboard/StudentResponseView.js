@@ -86,8 +86,35 @@ function QuestionResult({ question, index, studentAnswer }) {
             </div>
           )}
 
-          {/* Fill-in answer */}
-          {(question.type === 'fill' || question.type === 'truefalse') && (
+          {/* True/False */}
+          {(question.type === 'truefalse' || question.question_type === 'true_false') && (
+            <div className="grid grid-cols-2 gap-2">
+              {['True', 'False'].map((val) => {
+                const isCorrect = val.toLowerCase() === (question.answer ?? '').toLowerCase()
+                const isStudent = val.toLowerCase() === (studentAnswer ?? '').toLowerCase()
+                return (
+                  <div
+                    key={val}
+                    className={cn(
+                      'flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-sm font-semibold',
+                      isCorrect && isStudent  ? 'border-success bg-success-light text-success' :
+                      isCorrect && !isStudent ? 'border-success/50 bg-success-light/50 text-success' :
+                      !isCorrect && isStudent ? 'border-danger bg-danger-light text-danger' :
+                                                'border-border text-ink-4'
+                    )}
+                  >
+                    <span className="text-xl">{val === 'True' ? '✅' : '❌'}</span>
+                    <span>{val}</span>
+                    {isCorrect && <span className="text-[10px] font-bold">✓ Correct</span>}
+                    {!isCorrect && isStudent && <span className="text-[10px] font-bold">Student&apos;s</span>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Fill-in answer (legacy) */}
+          {question.type === 'fill' && (
             <div className="flex flex-col gap-1.5">
               <div className={cn(
                 'px-3 py-2 rounded-lg border text-sm',

@@ -6,9 +6,66 @@ import { createClient } from '@/lib/supabase/client'
 import MathRenderer from '@/components/ui/MathRenderer'
 import {
   Copy, CheckCheck, Sparkles,
-  AlertCircle, GripVertical, Check,
+  AlertCircle, GripVertical, Check, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { FLAGS } from '@/lib/featureFlags'
+
+// ── Generation method selector ────────────────────────────────────────────
+// UI-only teaser for the upcoming in-app credits generation.
+// Copy & Paste is always the active method — in-app is locked.
+function GenerationMethodSelector() {
+  const [showTooltip, setShowTooltip] = useState(false)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-semibold text-ink-2">How would you like to generate?</p>
+
+      {/* Copy & Paste — active */}
+      <div className="flex items-start gap-3 p-4 rounded-2xl border-2 border-brand-500 bg-brand-50 cursor-default">
+        <div className="w-4 h-4 rounded-full border-2 border-brand-600 bg-brand-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-ink">Copy &amp; Paste</p>
+          <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">
+            Generate using ChatGPT or Gemini — copy the prompt, paste the response
+          </p>
+        </div>
+      </div>
+
+      {/* Generate In-App — coming soon */}
+      <div
+        className="flex items-start gap-3 p-4 rounded-2xl border-2 border-border bg-surface cursor-not-allowed relative"
+        onClick={() => setShowTooltip((v) => !v)}
+      >
+        {/* Coming Soon badge */}
+        <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-500 border border-brand-100">
+          ✨ Coming Soon
+        </span>
+
+        <div className="w-4 h-4 rounded-full border-2 border-border bg-white flex-shrink-0 mt-0.5 opacity-50" />
+        <div className="opacity-50">
+          <p className="text-sm font-bold text-ink-3">Generate In-App</p>
+          <p className="text-xs text-ink-4 mt-0.5 leading-relaxed">
+            Generate instantly with credits — no copy-pasting needed
+          </p>
+        </div>
+      </div>
+
+      {/* Inline tooltip on tap */}
+      {showTooltip && (
+        <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 text-sm text-brand-700 leading-relaxed">
+          In-app generation with credits is coming soon. You'll be able to generate
+          questions instantly — no copy-pasting needed.{' '}
+          <a href="/dashboard/credits" className="font-semibold underline underline-offset-2 hover:text-brand-500">
+            Learn more →
+          </a>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Curriculum AI context ──────────────────────────────────────────────────
 const CURRICULUM_CONTEXT = {
@@ -50,7 +107,7 @@ function gradeContext(classLevel) {
   return { band: g || 'the selected class', desc: 'Match the expected curriculum level for this class.' }
 }
 
-function buildPrompt({ topic, description, subject, classLevel, assessmentType, numQuestions, curriculum }) {
+function buildPrompt({ topic, description, subject, classLevel, assessmentType, numQuestions, curriculum, questionType = 'mcq' }) {
   const currContext  = CURRICULUM_CONTEXT[curriculum]  ?? CURRICULUM_CONTEXT.other
   const typeContext  = ASSESSMENT_TYPE_CONTEXT[assessmentType] ?? ASSESSMENT_TYPE_CONTEXT.quiz
   const classDisplay = classLevel?.replace(/_/g, ' ')?.toUpperCase() ?? 'the class'
@@ -145,6 +202,46 @@ Key Concept: [The one rule or definition to remember — one sentence]\\n
 GOOD EXAMPLE (use this quality as your standard):
 "Photosynthesis happens in the chloroplasts.\\nChloroplasts contain chlorophyll — the green pigment that captures light.\\nThink of chloroplasts as the plant's solar panels.\\nKey Concept: Chloroplasts are where plants make their food using light.\\nA. The mitochondria releases energy from food — it does not make food.\\nC. The nucleus controls the cell but is not involved in photosynthesis.\\nD. The vacuole stores water and has no role in photosynthesis.\\n✅ The answer is B because chloroplasts are the only organelle that carries out photosynthesis.\\n💡 Remember: Chloroplasts do photosynthesis — mitochondria do respiration."`
 
+  const isTrueFalse = questionType === 'true_false'
+
+  const outputFormat = isTrueFalse
+    ? `OUTPUT FORMAT — return ONLY a valid JSON array, nothing else:
+[
+  {
+    "question": "Full statement text — written for ${grade.band}",
+    "question_type": "true_false",
+    "correct_answer": "True",
+    "hint": "One sentence nudge — does NOT give away the answer",
+    "explanation": "see explanation format below"
+  }
+]
+
+QUESTION RULES:
+- Generate exactly ${numQuestions} true or false statements
+- Each statement must be DEFINITIVELY true or false — never ambiguous
+- DO NOT include statements where "it depends" could be a valid answer
+- Mix true and false answers — do not always make the answer the same
+- Statements should be clear, specific, and test genuine understanding
+- Return ONLY the JSON array — no markdown, no preamble, no extra text`
+    : `OUTPUT FORMAT — return ONLY a valid JSON array, nothing else:
+[
+  {
+    "question": "Full question text — written for ${grade.band}",
+    "type": "mcq",
+    "options": ["A. first option", "B. second option", "C. third option", "D. fourth option"],
+    "answer": "B",
+    "hint": "One sentence nudge — does NOT give away the answer — appropriate for ${grade.band}",
+    "explanation": "see explanation format below"
+  }
+]
+
+QUESTION RULES:
+- Generate exactly ${numQuestions} questions
+- Every question MUST have exactly 4 options: A, B, C, D
+- SHUFFLE the correct answer — do not always put it as A or B
+- Questions must genuinely test understanding, not just recall
+- Return ONLY the JSON array — no markdown, no preamble, no extra text`
+
   return `You are an expert ${subjDisplay} teacher.
 You are creating ${typeContext} questions for ${classDisplay} students following the ${currContext}.
 
@@ -163,31 +260,14 @@ GRADE-LEVEL RULES — NON-NEGOTIABLE:
 
 TOPIC: "${topic}"${descriptionLine}
 
-OUTPUT FORMAT — return ONLY a valid JSON array, nothing else:
-[
-  {
-    "question": "Full question text — written for ${grade.band}",
-    "type": "mcq",
-    "options": ["A. first option", "B. second option", "C. third option", "D. fourth option"],
-    "answer": "B",
-    "hint": "One sentence nudge — does NOT give away the answer — appropriate for ${grade.band}",
-    "explanation": "see explanation format below"
-  }
-]
-
-QUESTION RULES:
-- Generate exactly ${numQuestions} questions
-- Every question MUST have exactly 4 options: A, B, C, D
-- SHUFFLE the correct answer — do not always put it as A or B
-- Questions must genuinely test understanding, not just recall
-- Return ONLY the JSON array — no markdown, no preamble, no extra text
+${outputFormat}
 
 ${explanationFormat}
 `
 }
 
 
-export default function AIGenerate({ setupData = null, onImport }) {
+export default function AIGenerate({ setupData = null, onImport, questionType = 'mcq' }) {
   // ── Null-safe defaults — works both from wizard (setupData set) ──────────
   // and from Question Bank standalone (setupData = null)
   const safeSetup = {
@@ -253,6 +333,7 @@ export default function AIGenerate({ setupData = null, onImport }) {
         assessmentType: effectiveType,
         numQuestions,
         curriculum,
+        questionType,
       })
     : ''
 
@@ -268,7 +349,7 @@ export default function AIGenerate({ setupData = null, onImport }) {
     setPartialMsg('')
     setLoading(true)
 
-    const result = parseAIResponse(pasted)
+    const result = parseAIResponse(pasted, questionType)
 
     if (!result.ok) {
       setError(result.errorMessage)
@@ -347,6 +428,9 @@ export default function AIGenerate({ setupData = null, onImport }) {
               <span className="text-xs bg-white border border-brand-200 text-brand-700 px-2 py-1 rounded-lg">
                 🌍 {CURRICULUM_CONTEXT[curriculum]?.split(' (')[0] ?? 'General'}
               </span>
+              <span className="text-xs bg-white border border-brand-200 text-brand-700 px-2 py-1 rounded-lg">
+                {questionType === 'true_false' ? '✅ True or False' : '🔘 Multiple Choice'}
+              </span>
             </div>
           </div>
         )}
@@ -378,18 +462,26 @@ export default function AIGenerate({ setupData = null, onImport }) {
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-semibold text-ink-2">Curriculum</label>
-              <select
-                value={curriculum}
-                onChange={(e) => setCurriculum(e.target.value)}
-                className="w-full px-3 py-2.5 border-2 border-border rounded-xl text-sm text-ink bg-white outline-none focus:border-brand-500 cursor-pointer"
-              >
-                {Object.entries(CURRICULUM_CONTEXT).map(([k, v]) => (
-                  <option key={k} value={k}>{v.split(' (')[0]}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={curriculum}
+                  onChange={(e) => setCurriculum(e.target.value)}
+                  className="w-full appearance-none px-3 py-2.5 pr-9 border-2 border-border rounded-xl text-sm text-ink bg-white outline-none cursor-pointer focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-300 transition-colors"
+                >
+                  {Object.entries(CURRICULUM_CONTEXT).map(([k, v]) => (
+                    <option key={k} value={k}>{v.split(' (')[0]}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                  <ChevronDown size={15} className="text-ink-4" />
+                </div>
+              </div>
             </div>
           </div>
         )}
+
+        {/* Generation method selector — credits teaser */}
+        {FLAGS.CREDITS_COMING_SOON_UI && <GenerationMethodSelector />}
 
         {/* Topic — required */}
         <div className="flex flex-col gap-1.5">

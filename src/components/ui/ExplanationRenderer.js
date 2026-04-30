@@ -337,8 +337,9 @@ function STEMExplanation({ blocks, rawLines, hint, score, showClosing }) {
           </div>
         )}
 
-        {/* ✅ Bold answer statement */}
-        {blocks.answerStatement && (
+        {/* ✅ Bold answer statement — only rendered here if it was NOT inside a step's working block.
+             If it was inside a step, it already rendered there; skip the duplicate. */}
+        {blocks.answerStatement && !blocks.steps.some((s) => s.working.some((w) => w.isAnswerStatement)) && (
           <p className="text-sm font-bold text-success leading-relaxed">
             <MathRenderer text={blocks.answerStatement} />
           </p>
@@ -475,11 +476,6 @@ export default function ExplanationRenderer({
   showClosing = true,
   className   = '',
 }) {
-  // Debug log — remove once confirmed working
-  if (typeof window !== 'undefined') {
-    console.log('[ER FULL]', subject, '\n' + (explanation ?? ''))
-  }
-
   if (!explanation?.trim() && !hint?.trim()) return null
 
   const stem  = isStem(subject)

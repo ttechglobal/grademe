@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient }  from '@/lib/supabase/client'
 import Link              from 'next/link'
 import {
-  Plus, ExternalLink, Trash2, Copy, CheckCheck,
-  X, Eye, EyeOff, RotateCcw, Clock, Users, AlertCircle,
+  Plus, ExternalLink, Trash2, Copy, Eye,
+  X, EyeOff, RotateCcw, Clock, Users, AlertCircle, ChevronRight,
 } from 'lucide-react'
 import { cn }            from '@/lib/utils'
 import { useToast }      from '@/components/ui/ToastProvider'
@@ -108,114 +108,227 @@ function DeleteModal({ assessment, onConfirm, onCancel, deleting }) {
   )
 }
 
+// ── Share sheet ────────────────────────────────────────────────────────────
+function ShareSheet({ assessment, shareUrl, tutorName, onClose }) {
+  const { toast } = useToast()
+  const { title, subject = '', assessment_type = 'assessment' } = assessment
+  const subjLabel = subject.replace(/_/g, ' ')
+  const typeLabel = assessment_type ?? 'assessment'
+
+  const handleWhatsApp = () => {
+    const msg = encodeURIComponent(
+      `📝 *${title}*\n\nHi! You have a ${subjLabel} ${typeLabel} from ${tutorName ?? 'your teacher'}.\n\nClick the link below to start:\n👉 ${shareUrl}\n\nGood luck! 🎯`
+    )
+    window.open(`https://wa.me/?text=${msg}`, '_blank')
+    onClose()
+  }
+
+  const handleEmail = () => {
+    const subj = encodeURIComponent(`${title}`)
+    const body = encodeURIComponent(
+      `Hi,\n\nYou have a ${subjLabel} ${typeLabel} from ${tutorName ?? 'your teacher'}.\n\nClick the link below to start:\n${shareUrl}\n\nGood luck!`
+    )
+    window.open(`mailto:?subject=${subj}&body=${body}`)
+    onClose()
+  }
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      toast({ message: 'Link copied to clipboard!', type: 'success' })
+    } catch {
+      // Fallback for older browsers
+      const el = document.createElement('textarea')
+      el.value = shareUrl
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      toast({ message: 'Link copied!', type: 'success' })
+    }
+    onClose()
+  }
+
+  const options = [
+    {
+      label:   'Share via WhatsApp',
+      icon:    <span className="w-8 h-8 rounded-xl bg-[#25D366]/10 flex items-center justify-center text-base">💬</span>,
+      onClick: handleWhatsApp,
+    },
+    {
+      label:   'Share via Email',
+      icon:    <span className="w-8 h-8 rounded-xl bg-brand-50 flex items-center justify-center text-base">✉️</span>,
+      onClick: handleEmail,
+    },
+    {
+      label:   'Copy Link',
+      icon:    <span className="w-8 h-8 rounded-xl bg-surface flex items-center justify-center"><Copy size={14} className="text-ink-4" /></span>,
+      onClick: handleCopy,
+    },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl px-0 pb-safe overflow-hidden shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <p className="font-semibold text-sm text-ink">Share Assessment</p>
+          <button onClick={onClose} className="w-7 h-7 rounded-full bg-surface flex items-center justify-center hover:bg-border transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Assessment name */}
+        <div className="px-5 py-3 bg-surface border-b border-border">
+          <p className="text-xs text-ink-4 font-medium truncate">{title}</p>
+          <p className="text-[10px] text-ink-4 mt-0.5 truncate opacity-60">{shareUrl}</p>
+        </div>
+
+        {/* Options */}
+        <div className="divide-y divide-border">
+          {options.map((opt) => (
+            <button
+              key={opt.label}
+              onClick={opt.onClick}
+              className="w-full flex items-center gap-3 px-5 py-4 hover:bg-surface active:bg-border transition-colors text-left"
+            >
+              {opt.icon}
+              <span className="text-sm font-semibold text-ink">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Cancel */}
+        <div className="px-5 py-3 border-t border-border">
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-xl border-2 border-border text-sm font-semibold text-ink-3 hover:bg-surface transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Assessment card ────────────────────────────────────────────────────────
 function AssessmentCard({
-  assessment, onDelete, onToggleActive, onCopy,
-  copying, toggling,
+  assessment, onDelete, onToggleActive, tutorName,
+  toggling,
 }) {
   const {
     id, title, subject, class_level, slug, is_active,
     submission_count = 0, last_submission_at, created_at,
   } = assessment
 
+  const [showShare, setShowShare] = useState(false)
   const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/t/${slug}`
 
   return (
-    <div className={cn(
-      'bg-white border rounded-2xl p-5 flex flex-col gap-4 transition-all',
-      is_active ? 'border-border' : 'border-border opacity-75'
-    )}>
-      {/* Header row */}
-      <div className="flex items-start gap-3">
-        <div className={cn('w-2 h-full min-h-[3rem] rounded-full flex-shrink-0 self-stretch', subjectColor(subject))} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className={cn(
-              'text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full',
-              is_active
-                ? 'bg-success-light text-success'
-                : 'bg-surface text-ink-4 border border-border'
-            )}>
-              {is_active ? 'Active' : 'Inactive'}
-            </span>
-            {subject && (
-              <span className="text-xs text-ink-4 capitalize">
-                {subject.replace(/_/g, ' ')}
+    <>
+      {showShare && (
+        <ShareSheet
+          assessment={assessment}
+          shareUrl={shareUrl}
+          tutorName={tutorName}
+          onClose={() => setShowShare(false)}
+        />
+      )}
+
+      <div className={cn(
+        'bg-white border rounded-2xl transition-all',
+        is_active ? 'border-border' : 'border-border opacity-75'
+      )}>
+        {/* Main tappable area — navigates to detail */}
+        <Link
+          href={`/dashboard/assessments/${id}`}
+          className="flex items-start gap-3 p-5 hover:bg-surface active:scale-[0.99] transition-all rounded-t-2xl group"
+        >
+          <div className={cn('w-2 h-full min-h-[3rem] rounded-full flex-shrink-0 self-stretch', subjectColor(subject))} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className={cn(
+                'text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full',
+                is_active
+                  ? 'bg-success-light text-success'
+                  : 'bg-surface text-ink-4 border border-border'
+              )}>
+                {is_active ? 'Active' : 'Inactive'}
               </span>
-            )}
-            {class_level && (
-              <span className="text-xs text-ink-4 uppercase">{class_level.replace(/_/g, ' ')}</span>
-            )}
+              {subject && (
+                <span className="text-xs text-ink-4 capitalize">
+                  {subject.replace(/_/g, ' ')}
+                </span>
+              )}
+              {class_level && (
+                <span className="text-xs text-ink-4 uppercase">{class_level.replace(/_/g, ' ')}</span>
+              )}
+            </div>
+            <h3 className="font-display font-bold text-ink text-base leading-tight truncate group-hover:text-brand-700 transition-colors">
+              {title}
+            </h3>
+            {/* Stats */}
+            <div className="flex items-center gap-4 text-xs text-ink-4 mt-2">
+              <div className="flex items-center gap-1.5">
+                <Users size={12} />
+                <span>
+                  {submission_count > 0
+                    ? `${submission_count} submission${submission_count !== 1 ? 's' : ''}`
+                    : 'No submissions yet'}
+                </span>
+              </div>
+              {last_submission_at && (
+                <div className="flex items-center gap-1.5">
+                  <Clock size={12} />
+                  <span>Last {relativeTime(last_submission_at)}</span>
+                </div>
+              )}
+            </div>
           </div>
-          <h3 className="font-display font-bold text-ink text-base leading-tight truncate">
-            {title}
-          </h3>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div className="flex items-center gap-4 text-xs text-ink-4">
-        <div className="flex items-center gap-1.5">
-          <Users size={12} />
-          <span>
-            {submission_count > 0
-              ? `${submission_count} submission${submission_count !== 1 ? 's' : ''}`
-              : 'No submissions yet'}
-          </span>
-        </div>
-        {last_submission_at && (
-          <div className="flex items-center gap-1.5">
-            <Clock size={12} />
-            <span>Last {relativeTime(last_submission_at)}</span>
-          </div>
-        )}
-        {!last_submission_at && (
-          <span className="text-ink-4">Not taken yet</span>
-        )}
-      </div>
-
-      {/* Actions row */}
-      <div className="flex flex-wrap gap-2 pt-1 border-t border-border">
-        <Link href={`/dashboard/assessments/${id}`}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-50 text-brand-700 text-xs font-semibold hover:bg-brand-100 transition-colors">
-          View Results
+          {/* Chevron — signals tappability */}
+          <ChevronRight size={16} className="text-ink-4 flex-shrink-0 self-center opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
         </Link>
 
-        <button
-          onClick={() => onCopy(shareUrl, id)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface text-ink text-xs font-semibold hover:bg-border transition-colors">
-          {copying === id ? <CheckCheck size={12} /> : <Copy size={12} />}
-          {copying === id ? 'Copied!' : 'Copy Link'}
-        </button>
+        {/* Action row */}
+        <div className="flex flex-wrap gap-2 px-5 py-3 border-t border-border">
+          <button
+            onClick={() => setShowShare(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface text-ink text-xs font-semibold hover:bg-border transition-colors"
+          >
+            <ExternalLink size={12} /> Share
+          </button>
 
-        <a href={`/t/${slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface text-ink text-xs font-semibold hover:bg-border transition-colors">
-          <ExternalLink size={12} /> Preview
-        </a>
+          <a href={`/t/${slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface text-ink text-xs font-semibold hover:bg-border transition-colors">
+            <Eye size={12} /> Preview
+          </a>
 
-        {/* Activate / Deactivate toggle */}
-        <button
-          onClick={() => onToggleActive(id, is_active)}
-          disabled={toggling === id}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50',
-            is_active
-              ? 'bg-surface text-ink-3 hover:bg-danger-light hover:text-danger'
-              : 'bg-success-light text-success hover:bg-success hover:text-white'
-          )}>
-          {toggling === id
-            ? <span className="animate-spin w-3 h-3 border border-current border-t-transparent rounded-full" />
-            : is_active ? <EyeOff size={12} /> : <RotateCcw size={12} />}
-          {is_active ? 'Deactivate' : 'Reactivate'}
-        </button>
+          {/* Activate / Deactivate toggle */}
+          <button
+            onClick={() => onToggleActive(id, is_active)}
+            disabled={toggling === id}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50',
+              is_active
+                ? 'bg-surface text-ink-3 hover:bg-danger-light hover:text-danger'
+                : 'bg-success-light text-success hover:bg-success hover:text-white'
+            )}>
+            {toggling === id
+              ? <span className="animate-spin w-3 h-3 border border-current border-t-transparent rounded-full" />
+              : is_active ? <EyeOff size={12} /> : <RotateCcw size={12} />}
+            {is_active ? 'Deactivate' : 'Reactivate'}
+          </button>
 
-        <button
-          onClick={() => onDelete(assessment)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface text-ink-3 text-xs font-semibold hover:bg-danger-light hover:text-danger transition-colors ml-auto">
-          <Trash2 size={12} /> Delete
-        </button>
+          <button
+            onClick={() => onDelete(assessment)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-surface text-ink-3 text-xs font-semibold hover:bg-danger-light hover:text-danger transition-colors ml-auto">
+            <Trash2 size={12} /> Delete
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -250,11 +363,11 @@ export default function AssessmentsPage() {
   const [loading,       setLoading]       = useState(true)
   const [deleteTarget,  setDeleteTarget]  = useState(null)
   const [deleting,      setDeleting]      = useState(false)
-  const [copying,       setCopying]       = useState(null)
   const [toggling,      setToggling]      = useState(null)
   const [autoDeactBanner, setAutoDeactBanner] = useState(false)
-  const [statusFilter,    setStatusFilter]    = useState('all')   // 'all' | 'active' | 'inactive'
-  const [subFilter,       setSubFilter]       = useState('all')   // 'all' | 'has' | 'none' | 'recent'
+  const [statusFilter,    setStatusFilter]    = useState('all')
+  const [subFilter,       setSubFilter]       = useState('all')
+  const [tutorName,       setTutorName]       = useState('')
 
   // ── Fetch + auto-deactivate ─────────────────────────────────────────────
   useEffect(() => {
@@ -262,6 +375,10 @@ export default function AssessmentsPage() {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user) return
+
+      // Fetch tutor name for share messages (non-critical — graceful degradation)
+      supabase.from('profiles').select('full_name').eq('id', session.user.id).single()
+        .then(({ data: p }) => { if (p?.full_name) setTutorName(p.full_name) })
 
       const { data, error } = await supabase
         .from('assessments')
@@ -300,13 +417,6 @@ export default function AssessmentsPage() {
       setLoading(false)
     }
     load()
-  }, [])
-
-  // ── Copy link ───────────────────────────────────────────────────────────
-  const handleCopy = useCallback((url, id) => {
-    navigator.clipboard.writeText(url)
-    setCopying(id)
-    setTimeout(() => setCopying(null), 2000)
   }, [])
 
   // ── Toggle active ───────────────────────────────────────────────────────
@@ -516,8 +626,7 @@ export default function AssessmentsPage() {
               assessment={a}
               onDelete={setDeleteTarget}
               onToggleActive={handleToggleActive}
-              onCopy={handleCopy}
-              copying={copying}
+              tutorName={tutorName}
               toggling={toggling}
             />
           ))}

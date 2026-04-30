@@ -6,9 +6,10 @@ import Link from 'next/link'
 import {
   Plus, ExternalLink, Users, BarChart3, Link2,
   ClipboardList, ChevronRight, ArrowUpRight,
-  ArrowDownRight, Minus, Clock,
+  ArrowDownRight, Clock, X, BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { FLAGS } from '@/lib/featureFlags'
 
 // ── Design tokens (match GradeMee brand) ──────────────────────────────────
 // bg-[#F8FAFC] page bg, white cards, brand navy #1a1a2e, amber #f5a623
@@ -17,7 +18,7 @@ import { cn } from '@/lib/utils'
 function greeting(name) {
   const h = new Date().getHours()
   const salutation = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
-  return `${salutation}${name ? `, ${name}` : ''}! 👋`
+  return `${salutation}${name ? `, ${name}` : ''}!`
 }
 
 function relTime(dateStr) {
@@ -99,16 +100,20 @@ function SubmissionRowSkeleton() {
 }
 
 // ── Stat card ──────────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, iconBg, value, label, trend }) {
-  const trendIcon =
-    trend > 0 ? <ArrowUpRight   size={12} className="text-success" /> :
-    trend < 0 ? <ArrowDownRight size={12} className="text-danger"  /> :
-                <Minus          size={12} className="text-ink-4"   />
+function StatCard({ icon: Icon, iconBg, iconColor = 'text-brand-600', value, label, trend }) {
+  // Only show trend when it's genuinely non-zero — never show "No change"
+  const hasTrend = trend !== undefined && trend !== 0 && trend !== null
 
-  const trendText =
-    trend > 0 ? `+${trend} this week` :
-    trend < 0 ? `${trend} this week`  :
-                'No change'
+  const trendEl = hasTrend ? (
+    <div className="flex items-center gap-1 mt-1">
+      {trend > 0
+        ? <ArrowUpRight   size={12} className="text-success" />
+        : <ArrowDownRight size={12} className="text-danger"  />}
+      <span className="text-[11px] text-ink-4 font-medium">
+        {trend > 0 ? `+${trend}` : trend} this week
+      </span>
+    </div>
+  ) : null
 
   return (
     <div className="
@@ -124,7 +129,7 @@ function StatCard({ icon: Icon, iconBg, value, label, trend }) {
         'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0',
         iconBg
       )}>
-        <Icon size={19} className="text-white" />
+        <Icon size={19} className={iconColor} />
       </div>
 
       {/* Value + label */}
@@ -135,13 +140,8 @@ function StatCard({ icon: Icon, iconBg, value, label, trend }) {
         <p className="text-[13px] text-[#6B7280] font-medium mt-1.5">{label}</p>
       </div>
 
-      {/* Trend */}
-      {trend !== undefined && (
-        <div className="flex items-center gap-1">
-          {trendIcon}
-          <span className="text-[11px] text-[#9CA3AF] font-medium">{trendText}</span>
-        </div>
-      )}
+      {/* Trend — only shown for real non-zero changes */}
+      {trendEl}
     </div>
   )
 }
@@ -166,6 +166,50 @@ function SubjectPill({ subject, classLevel }) {
 }
 
 // ── Main dashboard ─────────────────────────────────────────────────────────
+// ── Credits teaser banner ──────────────────────────────────────────────────
+const BANNER_DISMISSED_KEY = 'grademee_credits_banner_dismissed'
+
+function CreditsBanner() {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    try {
+      const dismissed = localStorage.getItem(BANNER_DISMISSED_KEY)
+      setVisible(!dismissed)
+    } catch { setVisible(true) }
+  }, [])
+
+  const dismiss = () => {
+    try { localStorage.setItem(BANNER_DISMISSED_KEY, '1') } catch {}
+    setVisible(false)
+  }
+
+  if (!visible) return null
+
+  return (
+    <div className="flex items-center gap-3 bg-brand-50 border border-brand-200 rounded-2xl px-5 py-3.5">
+      <span className="text-base flex-shrink-0">✨</span>
+      <p className="text-sm text-brand-700 flex-1 leading-relaxed">
+        <strong>In-app AI generation with credits is coming soon.</strong>{' '}
+        Generate questions instantly — no copy-pasting needed.
+      </p>
+      <Link
+        href="/dashboard/credits"
+        className="text-xs font-bold text-brand-600 hover:text-brand-500 whitespace-nowrap flex-shrink-0 underline underline-offset-2"
+      >
+        Learn more
+      </Link>
+      <button
+        onClick={dismiss}
+        className="text-brand-400 hover:text-brand-600 flex-shrink-0 transition-colors"
+        aria-label="Dismiss"
+      >
+        <X size={15} />
+      </button>
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const [firstName,   setFirstName]   = useState('')
   const [stats,       setStats]       = useState(null)
@@ -269,20 +313,21 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-8 max-w-5xl mx-auto pb-12">
 
+      {/* Credits teaser banner — dismissible, shows once */}
+      {FLAGS.CREDITS_COMING_SOON_UI && <CreditsBanner />}
+
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           SECTION 1 — WELCOME HEADER
       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="
-        relative overflow-hidden
-        bg-gradient-to-br from-[#1a1a2e] via-[#1e2d5a] to-[#2a3f7e]
-        rounded-3xl px-7 py-8 sm:px-10 sm:py-10
-        shadow-[0_4px_24px_rgba(26,26,46,0.2)]
-      ">
-        {/* Decorative circles */}
-        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
-        <div className="absolute -bottom-8 -right-4 w-32 h-32 rounded-full bg-[#f5a623]/10 pointer-events-none" />
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-700 via-brand-800 to-brand-900 px-7 py-8 sm:px-10 sm:py-9 flex items-center justify-between gap-6">
 
-        <div className="relative">
+        {/* Decorative background circles */}
+        <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/[0.06] pointer-events-none" />
+        <div className="absolute -bottom-14 right-16 w-36 h-36 rounded-full bg-white/[0.04] pointer-events-none" />
+        <div className="absolute top-4 right-48 w-20 h-20 rounded-full bg-amber/[0.08] pointer-events-none" />
+
+        {/* Content */}
+        <div className="relative flex-1 min-w-0">
           {loading ? (
             <div className="flex flex-col gap-3">
               <Pulse className="h-8 w-64 bg-white/20" />
@@ -293,28 +338,26 @@ export default function DashboardPage() {
               <h1 className="font-display text-2xl sm:text-3xl font-bold text-white leading-snug">
                 {greeting(firstName)}
               </h1>
-              <p className="text-[15px] text-white/60 mt-2 leading-relaxed max-w-xl">
+              <p className="text-[15px] text-white/65 mt-1.5 leading-relaxed max-w-xl">
                 {subtitle}
               </p>
             </>
           )}
 
-          {/* Quick create CTA */}
           {!loading && (
             <Link
               href="/dashboard/assessments/new"
-              className="
-                mt-6 inline-flex items-center gap-2
-                bg-[#f5a623] text-[#1a1a2e] font-bold text-sm
-                px-5 py-2.5 rounded-xl
-                hover:bg-[#f5a623]/90 transition-colors
-                shadow-[0_2px_8px_rgba(245,166,35,0.3)]
-              "
+              className="mt-5 inline-flex items-center gap-2 bg-white text-brand-800 font-bold text-sm px-5 py-2.5 rounded-xl hover:bg-white/90 transition-colors shadow-sm"
             >
               <Plus size={15} strokeWidth={2.5} />
               Create Assessment
             </Link>
           )}
+        </div>
+
+        {/* Right decorative element — desktop only */}
+        <div className="hidden md:flex relative flex-shrink-0 w-16 h-16 rounded-2xl bg-white/10 items-center justify-center">
+          <BookOpen size={28} className="text-white/60" />
         </div>
       </div>
 
@@ -328,14 +371,16 @@ export default function DashboardPage() {
           <>
             <StatCard
               icon={ClipboardList}
-              iconBg="bg-[#1a1a2e]"
+              iconBg="bg-brand-50"
+              iconColor="text-brand-600"
               value={stats.assessments}
               label="Total Assessments"
               trend={0}
             />
             <StatCard
               icon={Users}
-              iconBg="bg-[#3a55a4]"
+              iconBg="bg-brand-50"
+              iconColor="text-brand-600"
               value={stats.students}
               label="Total Students"
               trend={0}
@@ -343,17 +388,24 @@ export default function DashboardPage() {
             <StatCard
               icon={BarChart3}
               iconBg={
-                stats.avgScore === null ? 'bg-[#9CA3AF]' :
-                stats.avgScore >= 70   ? 'bg-[#2da44e]' :
-                stats.avgScore >= 50   ? 'bg-[#f5a623]' :
-                                          'bg-[#e5534b]'
+                stats.avgScore === null ? 'bg-surface' :
+                stats.avgScore >= 70   ? 'bg-success-light' :
+                stats.avgScore >= 50   ? 'bg-amber-light' :
+                                          'bg-danger-light'
+              }
+              iconColor={
+                stats.avgScore === null ? 'text-ink-4' :
+                stats.avgScore >= 70   ? 'text-success' :
+                stats.avgScore >= 50   ? 'text-amber' :
+                                          'text-danger'
               }
               value={stats.avgScore !== null ? `${stats.avgScore}%` : '—'}
               label="Class Average"
             />
             <StatCard
               icon={Link2}
-              iconBg="bg-[#2da44e]"
+              iconBg="bg-success-light"
+              iconColor="text-success"
               value={stats.totalSubmissions}
               label="Assessments Sent"
               trend={0}

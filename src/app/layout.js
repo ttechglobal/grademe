@@ -11,13 +11,19 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        {/* Nunito — warm, rounded EdTech font */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen bg-surface font-sans antialiased">
         <ToastProvider>
           {children}
         </ToastProvider>
-        {/* Vercel Analytics — tracks page views, locations, referrers */}
-        {/* To migrate to Google Analytics later, replace <Analytics /> with
-            a GA4 script tag and gtag() calls using the same event names */}
         <Analytics />
       </body>
     </html>

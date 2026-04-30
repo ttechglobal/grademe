@@ -7,6 +7,7 @@ import Spinner from '@/components/ui/Spinner'
 import Link    from 'next/link'
 import { BookOpen, Globe, ChevronDown, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { sortGradeOptions } from '@/lib/sortGrades'
 
 // ── All subjects ───────────────────────────────────────────────────────────
 const ALL_SUBJECTS = [
@@ -171,10 +172,10 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
   // Class options — derived from selected curriculum
   const teachingClasses = profile?.teaching_classes ?? []
   const classList       = teachingClasses.length > 0 ? teachingClasses : currDef.classes
-  const classOptions    = classList.map((c) => ({
+  const classOptions    = sortGradeOptions(classList.map((c) => ({
     value: c.toLowerCase().replace(/\s+/g, '_'),
     label: c,
-  }))
+  })))
 
   // Curriculum options
   const curriculumOptions = CURRICULA.map((c) => ({
@@ -302,17 +303,6 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
               <p className="text-xs text-ink-4 leading-tight hidden sm:block">{type.desc}</p>
             </button>
           ))}
-        </div>
-      </div>
-
-      {/* MCQ notice */}
-      <div className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-2">
-        <span className="text-lg">🔘</span>
-        <div>
-          <p className="text-sm font-semibold text-ink">Multiple Choice Questions (MCQ)</p>
-          <p className="text-xs text-ink-4 mt-0.5">
-            Only MCQ is supported right now. Fill-in questions are coming soon.
-          </p>
         </div>
       </div>
 

@@ -1,10 +1,17 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Outfit:wght@300;400;500;600;700&display=swap');
+/* ── Google Fonts: Nunito ─────────────────────────────────────────────────── */
+/* Warm, rounded, friendly — ideal for an EdTech product.                     */
+/* font-display:swap is set in the URL params — no render blocking.           */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
 
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Outfit', sans-serif;
-  --font-display: 'Playfair Display', serif;
+  /* Nunito is used for all text — headings and body alike.
+     font-display is kept as an alias so existing font-display classes
+     continue to work without any template changes. */
+  --font-sans:    'Nunito', system-ui, -apple-system, sans-serif;
+  --font-display: 'Nunito', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
 
   /* Brand (teal) */
   --color-brand-50:  #f4fbfb;
@@ -31,10 +38,10 @@
   --color-surface:    #f2f8f8;
 
   /* Status */
-  --color-success:      #2da44e;
+  --color-success:       #2da44e;
   --color-success-light: #ddf4e4;
-  --color-danger:       #e5534b;
-  --color-danger-light: #fde8e7;
+  --color-danger:        #e5534b;
+  --color-danger-light:  #fde8e7;
 
   /* Shadows */
   --shadow-card: 0 4px 20px rgba(13,31,31,0.08);
@@ -51,5 +58,16 @@
     font-family: var(--font-sans);
     color: var(--color-ink);
     background-color: var(--color-surface);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sans);
+  }
+
+  /* Keep monospace strictly for code and math — not affected by font change */
+  pre, code, .font-mono {
+    font-family: var(--font-mono);
   }
 }

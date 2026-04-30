@@ -55,6 +55,8 @@ export default function StepQuestions({
   // Restored from AssessmentWizard so Back from Step 3 returns to the question list.
   // When null, tutor sees the mode-picker. When set, they see that mode's editor.
   initialMode = null,
+  // The question type selected on Step 0 — threaded through to all sub-components
+  questionType = 'mcq',
 }) {
   const [mode,        setMode]        = useState(initialMode)
   const [selectedIds, setSelectedIds] = useState(new Map())
@@ -187,6 +189,7 @@ export default function StepQuestions({
           selected={selectedIds}
           onToggle={handleToggle}
           onSelectAll={handleSelectAll}
+          questionType={questionType}
         />
 
         <div className="flex items-center justify-between pt-2 border-t border-border">
@@ -218,6 +221,7 @@ export default function StepQuestions({
         </div>
         <AIGenerate
           setupData={setupData}
+          questionType={questionType}
           onImport={(qs) => { onChange(qs); onNext() }}
         />
       </div>
@@ -245,7 +249,7 @@ export default function StepQuestions({
       </div>
 
       {mode === 'manual'
-        ? <QuestionEditor questions={questions} onChange={onChange} />
+        ? <QuestionEditor questions={questions} onChange={onChange} questionType={questionType} />
         : <AIImport onImport={handleImport} />
       }
 

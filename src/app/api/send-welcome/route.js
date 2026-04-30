@@ -1,10 +1,24 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request) {
   try {
+    // ── Require authenticated session — this endpoint is tutor-only ────────
+    const supabase = await createClient()
+    const { data: { user }, error: authErr } = await supabase.auth.getUser()
+    if (authErr || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { name, email } = await request.json()
+
+    // Only allow sending to the authenticated user's own email
+    // Prevents this endpoint from being used as a spam relay
     if (!name || !email) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
+    }
+    if (email.toLowerCase() !== user.email.toLowerCase()) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const firstName = name.split(' ')[0]
@@ -98,6 +112,6 @@ export async function POST(request) {
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('send-welcome error:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
   }
 }

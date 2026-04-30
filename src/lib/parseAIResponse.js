@@ -42,13 +42,55 @@ function extractArray(text) {
 }
 
 // ── Map a raw AI question object to our internal format ───────────────────
-function mapQuestion(raw) {
+// questionType is an optional caller-supplied hint ('mcq' | 'true_false').
+// When provided it overrides auto-detection — useful when the AI forgets to
+// include question_type in its output.
+function mapQuestion(raw, questionType = null) {
   const text = (raw.question ?? raw.text ?? '').trim()
   if (!text) return null
 
+  // ── True/False detection ────────────────────────────────────────────────
+  // Checks (in priority order):
+  //   1. Caller says it's true_false (most reliable)
+  //   2. question_type field on the object
+  //   3. correct_answer field is "True" or "False"
+  //   4. answer field is literally "True" or "False" (not a letter)
+  //   5. Options array has exactly 2 entries that look like True/False
+  const callerSaysTF  = questionType === 'true_false'
+  const fieldSaysTF   = raw.question_type === 'true_false'
+  const correctAnsVal = String(raw.correct_answer ?? '').trim()
+  const answerVal     = String(raw.answer ?? '').trim()
+  const correctAnsTF  = correctAnsVal && /^(true|false)$/i.test(correctAnsVal)
+  const answerIsTF    = /^(true|false)$/i.test(answerVal)          // not "A","B","C","D"
+  const optionsTF     = (
+    Array.isArray(raw.options) && raw.options.length === 2 &&
+    raw.options.every((o) => /^(true|false)/i.test(String(o).replace(/^[AB]\.\s*/i, '')))
+  )
+
+  const isTrueFalse = callerSaysTF || fieldSaysTF || correctAnsTF || answerIsTF || optionsTF
+
+  if (isTrueFalse) {
+    // Normalise answer: "true" / "TRUE" / "True" → "True", etc.
+    const rawAnswer = correctAnsVal || answerVal || 'True'
+    const answer    = /^true/i.test(rawAnswer) ? 'True' : 'False'
+
+    return {
+      id:            Math.random().toString(36).slice(2),
+      type:          'truefalse',
+      question_type: 'true_false',
+      text,
+      options:       [],
+      answer,
+      hint:          (raw.hint        ?? '').trim(),
+      explanation:   (raw.explanation ?? '').trim(),
+    }
+  }
+
+  // ── MCQ question (default) ──────────────────────────────────────────────
   return {
     id:          Math.random().toString(36).slice(2),
     type:        'mcq',
+    question_type: 'mcq',
     text,
     options:     Array.isArray(raw.options) && raw.options.length >= 2
                    ? raw.options.slice(0, 4)
@@ -60,13 +102,17 @@ function mapQuestion(raw) {
 }
 
 /**
- * parseAIResponse(rawText)
+ * parseAIResponse(rawText, questionType?)
+ *
+ * @param {string} rawText     - The raw pasted text from the AI
+ * @param {string} [questionType] - 'mcq' | 'true_false' — used as a hint when
+ *   the AI omits question_type from its response. Defaults to auto-detection.
  *
  * Returns:
  *   { ok: true,  questions: [...], partialMessage: string|null }
  *   { ok: false, errorMessage: string }
  */
-export function parseAIResponse(rawText) {
+export function parseAIResponse(rawText, questionType = null) {
   // Step 1 — auto-fix silently
   const fixed = autofix(rawText)
 
@@ -102,7 +148,7 @@ export function parseAIResponse(rawText) {
   let   failed    = 0
 
   for (const raw of parsed) {
-    const q = mapQuestion(raw)
+    const q = mapQuestion(raw, questionType)
     if (q) {
       questions.push(q)
     } else {

@@ -153,7 +153,7 @@ export async function GET() {
 
   } catch (err) {
     console.error('[/api/students GET]', err.message)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
   }
 }
 
@@ -228,6 +228,6 @@ export async function PATCH(request) {
 
   } catch (err) {
     console.error('[/api/students PATCH]', err.message)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
   }
 }

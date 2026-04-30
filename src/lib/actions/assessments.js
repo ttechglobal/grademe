@@ -74,6 +74,10 @@ export async function createAssessment(setupData, questions, settings, source = 
   if (setupData.assessmentType) {
     coreInsert.assessment_type = setupData.assessmentType
   }
+  // question_type — 'mcq' | 'true_false' — the type selected on step 0
+  if (setupData.questionMode) {
+    coreInsert.question_type = setupData.questionMode === 'true_false' ? 'true_false' : 'mcq'
+  }
 
   const { data: assessment, error: assessmentError } = await supabase
     .from('assessments')
@@ -104,18 +108,19 @@ export async function createAssessment(setupData, questions, settings, source = 
 
   // ── Insert questions linked to this assessment ─────────────────────────
   const questionsToInsert = questions.map((q, index) => ({
-    assessment_id: assessment.id,
-    teacher_id:    user.id,
-    type:          q.type     || 'mcq',
-    text:          q.text,
-    options:       Array.isArray(q.options) ? q.options : [],
-    answer:        q.answer,
-    hint:          q.hint        ?? '',
-    explanation:   q.explanation ?? '',
-    order_index:   index,
-    subject:       setupData.subject,
-    class_level:   setupData.classLevel,
-    topic:         setupData.title || autoTitle,
+    assessment_id:  assessment.id,
+    teacher_id:     user.id,
+    type:           q.type          || 'mcq',
+    question_type:  q.question_type || (q.type === 'truefalse' ? 'true_false' : 'mcq'),
+    text:           q.text,
+    options:        Array.isArray(q.options) ? q.options : [],
+    answer:         q.answer,
+    hint:           q.hint          ?? '',
+    explanation:    q.explanation   ?? '',
+    order_index:    index,
+    subject:        setupData.subject,
+    class_level:    setupData.classLevel,
+    topic:          setupData.title || autoTitle,
   }))
 
   const { error: questionsError } = await supabase
@@ -130,17 +135,18 @@ export async function createAssessment(setupData, questions, settings, source = 
   // ── Also save to question bank for manual/AI sources ───────────────────
   if (source === 'manual' || source === 'ai' || source === 'generate') {
     const bankQuestions = questions.map((q) => ({
-      assessment_id: null,
-      teacher_id:    user.id,
-      type:          q.type     || 'mcq',
-      text:          q.text,
-      options:       Array.isArray(q.options) ? q.options : [],
-      answer:        q.answer,
-      hint:          q.hint        ?? '',
-      explanation:   q.explanation ?? '',
-      subject:       setupData.subject,
-      class_level:   setupData.classLevel,
-      topic:         setupData.title || autoTitle,
+      assessment_id:  null,
+      teacher_id:     user.id,
+      type:           q.type          || 'mcq',
+      question_type:  q.question_type || (q.type === 'truefalse' ? 'true_false' : 'mcq'),
+      text:           q.text,
+      options:        Array.isArray(q.options) ? q.options : [],
+      answer:         q.answer,
+      hint:           q.hint          ?? '',
+      explanation:    q.explanation   ?? '',
+      subject:        setupData.subject,
+      class_level:    setupData.classLevel,
+      topic:          setupData.title || autoTitle,
     }))
 
     supabase.from('questions').insert(bankQuestions).then(({ error }) => {

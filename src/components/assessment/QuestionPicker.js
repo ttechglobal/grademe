@@ -6,12 +6,13 @@ import { cn } from '@/lib/utils'
 import Badge from '@/components/ui/Badge'
 import Spinner from '@/components/ui/Spinner'
 import MathRenderer from '@/components/ui/MathRenderer'
-import { Search, CheckSquare, Square } from 'lucide-react'
+import { Search, CheckSquare, Square, ChevronDown } from 'lucide-react'
+import { sortGrades } from '@/lib/sortGrades'
 
-const TYPE_LABELS   = { mcq: 'MCQ', fill: 'Fill in', truefalse: 'True/False' }
-const TYPE_VARIANTS = { mcq: 'brand', fill: 'amber', truefalse: 'blue' }
+const TYPE_LABELS   = { mcq: 'MCQ', fill: 'Fill in', truefalse: 'True/False', true_false: 'True/False' }
+const TYPE_VARIANTS = { mcq: 'brand', fill: 'amber', truefalse: 'green', true_false: 'green' }
 
-export default function QuestionPicker({ selected, onToggle, onSelectAll }) {
+export default function QuestionPicker({ selected, onToggle, onSelectAll, questionType = 'mcq' }) {
   const [questions,     setQuestions]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [search,        setSearch]        = useState('')
@@ -38,7 +39,7 @@ export default function QuestionPicker({ selected, onToggle, onSelectAll }) {
   }, [])
 
   const subjects = [...new Set(questions.map((q) => q.subject).filter(Boolean))]
-  const classes  = [...new Set(questions.map((q) => q.class_level).filter(Boolean))]
+  const classes  = sortGrades([...new Set(questions.map((q) => q.class_level).filter(Boolean))])
 
   // Topics filtered by current subject + class selection
   const topics = [...new Set(
@@ -51,12 +52,17 @@ export default function QuestionPicker({ selected, onToggle, onSelectAll }) {
       .map((q) => q.topic)
   )]
 
+  // Normalise the questionType to the DB type values used in the bank
+  // 'mcq' stays 'mcq'; 'true_false' from wizard maps to 'truefalse' in the bank
+  const bankType = questionType === 'true_false' ? 'truefalse' : 'mcq'
+
   const filtered = questions.filter((q) => {
     const matchSearch  = !search        || q.text.toLowerCase().includes(search.toLowerCase())
     const matchSubject = !filterSubject || q.subject     === filterSubject
     const matchClass   = !filterClass   || q.class_level === filterClass
     const matchTopic   = !filterTopic   || q.topic       === filterTopic
-    return matchSearch && matchSubject && matchClass && matchTopic
+    const matchType    = q.type === bankType
+    return matchSearch && matchSubject && matchClass && matchTopic && matchType
   })
 
   const allSelected = filtered.length > 0 && filtered.every((q) => selected.has(q.id))
@@ -96,6 +102,13 @@ export default function QuestionPicker({ selected, onToggle, onSelectAll }) {
   return (
     <div className="flex flex-col gap-3">
 
+      {/* Question type filter indicator */}
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-brand-50 border border-brand-200 rounded-xl">
+        <span className="text-sm font-semibold text-brand-700">
+          {questionType === 'true_false' ? '✅ / ❌  Showing True or False questions' : '🔘 Showing Multiple Choice questions'}
+        </span>
+      </div>
+
       {/* Search */}
       <div className="flex items-center gap-2 bg-white border border-border rounded-xl px-3 py-2">
         <Search size={14} className="text-ink-4 flex-shrink-0" />
@@ -110,41 +123,31 @@ export default function QuestionPicker({ selected, onToggle, onSelectAll }) {
 
       {/* Filters row */}
       <div className="grid grid-cols-3 gap-2">
-        <select
-          value={filterSubject}
-          onChange={(e) => handleSubjectChange(e.target.value)}
-          className="px-3 py-2 border border-border rounded-xl text-sm text-ink bg-white outline-none focus:border-brand-500"
-        >
-          <option value="">All subjects</option>
-          {subjects.map((s) => (
-            <option key={s} value={s}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={filterClass}
-          onChange={(e) => handleClassChange(e.target.value)}
-          className="px-3 py-2 border border-border rounded-xl text-sm text-ink bg-white outline-none focus:border-brand-500"
-        >
-          <option value="">All classes</option>
-          {classes.map((c) => (
-            <option key={c} value={c}>{c.toUpperCase()}</option>
-          ))}
-        </select>
-
-        <select
-          value={filterTopic}
-          onChange={(e) => setFilterTopic(e.target.value)}
-          className="px-3 py-2 border border-border rounded-xl text-sm text-ink bg-white outline-none focus:border-brand-500"
-          disabled={topics.length === 0}
-        >
-          <option value="">All topics</option>
-          {topics.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
+        {[
+          { value: filterSubject, onChange: (v) => handleSubjectChange(v), placeholder: 'All subjects',
+            options: subjects.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })) },
+          { value: filterClass,   onChange: (v) => handleClassChange(v),   placeholder: 'All classes',
+            options: classes.map((c) => ({ value: c, label: c.toUpperCase() })) },
+          { value: filterTopic,   onChange: (v) => setFilterTopic(v),      placeholder: 'All topics',
+            options: topics.map((t) => ({ value: t, label: t })), disabled: topics.length === 0 },
+        ].map(({ value, onChange, placeholder, options, disabled }, i) => (
+          <div key={i} className="relative">
+            <select
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              disabled={disabled}
+              className="w-full appearance-none px-3 py-2 pr-7 border-2 border-border rounded-xl text-xs text-ink bg-white outline-none cursor-pointer focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">{placeholder}</option>
+              {options.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+              <ChevronDown size={13} className="text-ink-4" />
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Select all */}
@@ -236,8 +239,8 @@ export default function QuestionPicker({ selected, onToggle, onSelectAll }) {
                   </div>
                 </div>
 
-                <Badge variant={TYPE_VARIANTS[q.type] ?? 'grey'}>
-                  {TYPE_LABELS[q.type] ?? q.type}
+                <Badge variant={TYPE_VARIANTS[q.type] ?? TYPE_VARIANTS[q.question_type] ?? 'grey'}>
+                  {TYPE_LABELS[q.type] ?? TYPE_LABELS[q.question_type] ?? q.type}
                 </Badge>
               </button>
             )

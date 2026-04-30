@@ -6,8 +6,9 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, ClipboardList, Users,
   BookOpen, Sparkles, Settings,
-  HelpCircle, Users2, ChevronRight,
+  HelpCircle, Users2, ChevronRight, Zap,
 } from 'lucide-react'
+import { FLAGS } from '@/lib/featureFlags'
 
 // ── Single canonical nav definition ───────────────────────────────────────
 // This is THE source of truth. MobileDrawer imports NAV_GROUPS from here
@@ -26,6 +27,10 @@ export const NAV_GROUPS = [
     links: [
       { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen  },
       { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles  },
+      // Credits item injected below if flag is on
+      ...(FLAGS.CREDITS_COMING_SOON_UI ? [
+        { label: 'Credits', href: '/dashboard/credits', icon: Zap, badge: 'Soon' },
+      ] : []),
     ],
   },
   {
@@ -67,7 +72,7 @@ export function NavLinks({ onNavigate }) {
           <p className="px-6 pb-1 text-[10px] font-bold uppercase tracking-widest text-white/25">
             {group.section}
           </p>
-          {group.links.map(({ label, href, icon: Icon }) => {
+          {group.links.map(({ label, href, icon: Icon, badge }) => {
             const isActive = active === href
             return (
               <Link
@@ -93,6 +98,11 @@ export function NavLinks({ onNavigate }) {
                   )}
                 />
                 <span className="flex-1 leading-none">{label}</span>
+                {badge && (
+                  <span className="text-[9px] font-bold uppercase tracking-wide bg-amber/15 text-amber px-1.5 py-0.5 rounded-full flex-shrink-0">
+                    {badge}
+                  </span>
+                )}
               </Link>
             )
           })}
@@ -138,13 +148,15 @@ export default function Sidebar() {
   return (
     <aside className="w-[220px] min-h-screen bg-brand-900 flex flex-col flex-shrink-0 hidden md:flex">
 
-      {/* Logo */}
+      {/* Logo + tagline */}
       <div className="px-6 py-7 border-b border-white/10 flex-shrink-0">
         <div className="font-display text-2xl font-bold select-none">
           <span className="text-white">Grade</span>
           <span className="text-amber">Mee</span>
         </div>
-        <p className="text-xs text-white/30 mt-0.5">Assessment Platform</p>
+        <p className="text-[11px] font-medium tracking-[0.06em] text-white/30 mt-1 select-none">
+          Empowering Learning
+        </p>
       </div>
 
       {/* Nav */}

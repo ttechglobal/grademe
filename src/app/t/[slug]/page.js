@@ -20,7 +20,7 @@ export default async function StudentTestPage({ params, searchParams }) {
     .select(`
       *,
       questions (
-        id, type, text, options, answer, hint, explanation, order_index
+        id, type, question_type, text, options, answer, hint, explanation, order_index
       )
     `)
     .eq('slug', slug)
@@ -38,6 +38,17 @@ export default async function StudentTestPage({ params, searchParams }) {
   assessment.questions = [...(assessment.questions ?? [])].sort(
     (a, b) => a.order_index - b.order_index
   )
+
+  // Defensively normalise question_type on every question.
+  // Older rows may have type='truefalse' but question_type='mcq' (default from migration).
+  // The DB default filled 'mcq' for pre-migration T/F rows — fix that here.
+  assessment.questions = assessment.questions.map((q) => ({
+    ...q,
+    question_type:
+      q.type === 'truefalse' || q.type === 'true_false'
+        ? 'true_false'
+        : q.question_type ?? 'mcq',
+  }))
 
   // Preview mode — show answers, explanations, no submission
   if (isPreview) {

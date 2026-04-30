@@ -251,11 +251,9 @@ export default function StudentHistory({ currentSlug, currentStudentName }) {
 
               <button
                 onClick={() => {
-                  if (confirm('Clear all saved assessments from this device?')) {
-                    clearHistory()
-                    setHistory([])
-                    setOpen(false)
-                  }
+                  clearHistory()
+                  setHistory([])
+                  setOpen(false)
                 }}
                 style={{
                   padding:      '10px',

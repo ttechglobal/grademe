@@ -118,6 +118,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             // Restore the last mode used — so Back from Step 3 shows question list, not picker
             initialMode={questionMode}
             setupData={setupData}
+            questionType={questionType}             // ← threaded through
             onNext={() => setStep(3)}
             onBack={() => { setStep(1) }}
           />
@@ -128,6 +129,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             data={{ ...setupData, questionCount: questions.length }}
             questions={questions}
             source={questionSource}
+            questionType={questionType}             // ← threaded through
             // Back from share → questions list (mode already preserved in questionMode state)
             onBack={() => setStep(2)}
             onFinish={() => router.push('/dashboard/assessments')}

@@ -418,6 +418,13 @@ export default function SuperAdminClient({ adminEmail, adminName }) {
               <StatCard icon={Activity}     label="Student Submissions"  value={totals.submissions}  accent="#2da44e" />
               <StatCard icon={BookOpen}     label="Questions Generated"  value={totals.questions}    accent="#8b5cf6" />
             </div>
+            {/* Credits interest counter */}
+            {totals.creditsInterest > 0 && (
+              <div className="mt-3 inline-flex items-center gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5 text-sm text-brand-700">
+                <span className="text-base">✨</span>
+                <strong>{totals.creditsInterest}</strong> tutor{totals.creditsInterest !== 1 ? 's' : ''} interested in credits
+              </div>
+            )}
           </div>
 
           {/* Period */}

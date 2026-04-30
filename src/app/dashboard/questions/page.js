@@ -15,8 +15,8 @@ import AIGenerate from '@/components/assessment/AIGenerate'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/ToastProvider'
 
-const TYPE_LABELS   = { mcq: 'MCQ', fill: 'Fill in', truefalse: 'True/False' }
-const TYPE_VARIANTS = { mcq: 'brand', fill: 'amber', truefalse: 'blue' }
+const TYPE_LABELS   = { mcq: 'MCQ', fill: 'Fill in', truefalse: 'True/False', true_false: 'True/False' }
+const TYPE_VARIANTS = { mcq: 'brand', fill: 'amber', truefalse: 'green', true_false: 'green' }
 
 function TopicGroup({ topic, questions, onEdit, onDelete, selectedIds, onToggle, onToggleAll }) {
   const [open, setOpen] = useState(false)
@@ -111,8 +111,8 @@ function TopicGroup({ topic, questions, onEdit, onDelete, selectedIds, onToggle,
 
               {/* Bottom row — type badge + actions — always visible, below on mobile */}
               <div className="flex items-center justify-between pl-9">
-                <Badge variant={TYPE_VARIANTS[q.type] ?? 'grey'}>
-                  {TYPE_LABELS[q.type] ?? q.type}
+                <Badge variant={TYPE_VARIANTS[q.type] ?? TYPE_VARIANTS[q.question_type] ?? 'grey'}>
+                  {TYPE_LABELS[q.type] ?? TYPE_LABELS[q.question_type] ?? q.type}
                 </Badge>
                 <div className="flex items-center gap-2">
                   <button
@@ -260,6 +260,7 @@ export default function QuestionsPage() {
   const [selectedIds,     setSelectedIds]     = useState(new Set())
   const [deleting,        setDeleting]        = useState(false)
   const [showAIGenerate,  setShowAIGenerate]  = useState(false)
+  const [confirmDeleteIds, setConfirmDeleteIds] = useState(null)
 
   const loadQuestions = useCallback(async () => {
     setLoading(true)
@@ -282,7 +283,9 @@ export default function QuestionsPage() {
 
   const handleDelete = async (ids) => {
     const count = ids.length
-    if (!confirm(`Delete ${count} question${count !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    window.__deleteConfirmed = false
+    if (!confirmDeleteIds) { setConfirmDeleteIds(ids); return }
+    setConfirmDeleteIds(null)
     setDeleting(true)
     const supabase = createClient()
     const { error } = await supabase.from('questions').delete().in('id', ids)
@@ -405,10 +408,15 @@ export default function QuestionsPage() {
                 <button
                   onClick={() => handleDelete([...selectedIds])}
                   disabled={deleting}
-                  className="ml-auto flex items-center gap-1.5 text-sm font-semibold text-danger px-4 py-2 bg-danger-light rounded-xl hover:bg-danger-light/80 transition-colors"
+                  className={cn(
+                    'ml-auto flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition-colors',
+                    confirmDeleteIds
+                      ? 'bg-danger text-white hover:bg-danger/90'
+                      : 'text-danger bg-danger-light hover:bg-danger-light/80'
+                  )}
                 >
                   <Trash2 size={14} />
-                  Delete {selectedIds.size} selected
+                  {confirmDeleteIds ? `Confirm delete ${selectedIds.size}?` : `Delete ${selectedIds.size} selected`}
                 </button>
               </>
             )}

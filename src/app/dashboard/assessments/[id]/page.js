@@ -232,6 +232,8 @@ export default function AssessmentDetailPage({ params }) {
   const [editTitle,    setEditTitle]    = useState(false)
   const [titleVal,     setTitleVal]     = useState('')
   const [savingTitle,  setSavingTitle]  = useState(false)
+  // null | 'assessment' | { type: 'question', qid }
+  const [confirmDelete, setConfirmDelete] = useState(null)
   // Expand/collapse all submissions
   const [allExpanded,  setAllExpanded]  = useState(false)
 
@@ -284,7 +286,8 @@ export default function AssessmentDetailPage({ params }) {
   }, [id, loadAssessment])
 
   const handleDeleteAssessment = async () => {
-    if (!confirm('Delete this assessment? All submissions will be permanently deleted. This cannot be undone.')) return
+    if (confirmDelete !== 'assessment') { setConfirmDelete('assessment'); return }
+    setConfirmDelete(null)
     setDeleting(true)
     const supabase = createClient()
     const { error } = await supabase.from('assessments').delete().eq('id', id)
@@ -298,7 +301,8 @@ export default function AssessmentDetailPage({ params }) {
   }
 
   const handleDeleteQuestion = async (qid) => {
-    if (!confirm('Delete this question? This affects the live link immediately.')) return
+    if (!confirmDelete || confirmDelete?.qid !== qid) { setConfirmDelete({ qid }); return }
+    setConfirmDelete(null)
     const supabase = createClient()
     const { error } = await supabase.from('questions').delete().eq('id', qid)
     if (!error) { toast({ message: 'Question deleted.', type: 'success' }); loadAssessment() }
@@ -410,14 +414,19 @@ export default function AssessmentDetailPage({ params }) {
                 Share Link
               </a>
 
-              {/* Delete */}
+              {/* Delete — tap once to arm, tap again to confirm */}
               <button
                 onClick={handleDeleteAssessment}
                 disabled={deleting}
-                className="inline-flex items-center gap-2 bg-white border border-danger/30 text-danger text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-danger-light transition-colors disabled:opacity-50"
+                className={cn(
+                  'inline-flex items-center gap-2 border text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50',
+                  confirmDelete === 'assessment'
+                    ? 'bg-danger text-white border-danger'
+                    : 'bg-white border-danger/30 text-danger hover:bg-danger-light'
+                )}
               >
                 <Trash2 size={14} />
-                {deleting ? 'Deleting…' : 'Delete'}
+                {deleting ? 'Deleting…' : confirmDelete === 'assessment' ? 'Confirm delete?' : 'Delete'}
               </button>
             </div>
           </div>
@@ -524,8 +533,13 @@ export default function AssessmentDetailPage({ params }) {
                       </button>
                       <button
                         onClick={() => handleDeleteQuestion(q.id)}
-                        className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-danger hover:text-danger transition-colors"
-                        title="Delete"
+                        className={cn(
+                          'w-7 h-7 rounded-lg border flex items-center justify-center transition-colors',
+                          confirmDelete?.qid === q.id
+                            ? 'bg-danger border-danger text-white'
+                            : 'bg-surface border-border hover:border-danger hover:text-danger'
+                        )}
+                        title={confirmDelete?.qid === q.id ? 'Confirm?' : 'Delete'}
                       >
                         <Trash2 size={13} />
                       </button>

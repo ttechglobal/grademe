@@ -30,6 +30,7 @@ export default function EditQuestionModal({ question, onClose, onSaved }) {
   const [explanation, setExplanation] = useState(question.explanation ?? '')
   const [saving,      setSaving]      = useState(false)
   const [deleting,    setDeleting]    = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const updateOption = (i, val) => {
     const next = [...options]
@@ -59,7 +60,8 @@ export default function EditQuestionModal({ question, onClose, onSaved }) {
   }
 
   const handleDelete = async () => {
-    if (!confirm('Delete this question? This cannot be undone.')) return
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    setConfirmDelete(false)
     setDeleting(true)
     const supabase = createClient()
     const { error } = await supabase
@@ -219,7 +221,7 @@ export default function EditQuestionModal({ question, onClose, onSaved }) {
             loading={deleting}
           >
             <Trash2 size={14} />
-            Delete
+            {confirmDelete ? 'Confirm delete?' : 'Delete'}
           </Button>
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={onClose}>

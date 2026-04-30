@@ -58,16 +58,21 @@ export default function MobileDrawer() {
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        {/* Logo + close */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10 flex-shrink-0">
-          <div className="font-display text-xl font-bold select-none">
-            <span className="text-white">Grade</span>
-            <span className="text-amber">Mee</span>
+        {/* Logo + tagline + close */}
+        <div className="flex items-start justify-between px-6 py-5 border-b border-white/10 flex-shrink-0">
+          <div>
+            <div className="font-display text-xl font-bold select-none">
+              <span className="text-white">Grade</span>
+              <span className="text-amber">Mee</span>
+            </div>
+            <p className="text-[11px] font-medium tracking-[0.06em] text-white/30 mt-1 select-none">
+              Empowering Learning
+            </p>
           </div>
           <button
             onClick={() => setOpen(false)}
             aria-label="Close menu"
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors mt-0.5"
           >
             <X size={18} className="text-white" />
           </button>

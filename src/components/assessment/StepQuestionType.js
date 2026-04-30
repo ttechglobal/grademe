@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CheckSquare, ToggleLeft, PenLine, GitBranch } from 'lucide-react'
 import { FLAGS } from '@/lib/featureFlags'
+import Button from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 
 /**
@@ -135,10 +136,14 @@ function QuestionTypeCard({ type, selected, onClick }) {
 export default function StepQuestionType({ onSelect }) {
   const [selected, setSelected] = useState(null)
 
-  const handleSelect = (typeId) => {
+  // Clicking a card selects it but does NOT advance automatically.
+  // The tutor must press Next → to proceed.
+  const handleCardClick = (typeId) => {
     setSelected(typeId)
-    // Brief selection flash so the user sees their choice register, then advance
-    setTimeout(() => onSelect(typeId), 180)
+  }
+
+  const handleNext = () => {
+    if (selected) onSelect(selected)
   }
 
   return (
@@ -161,9 +166,21 @@ export default function StepQuestionType({ onSelect }) {
             key={type.id}
             type={type}
             selected={selected === type.id}
-            onClick={() => handleSelect(type.id)}
+            onClick={() => handleCardClick(type.id)}
           />
         ))}
+      </div>
+
+      {/* Next button — disabled until a type is selected */}
+      <div className="flex flex-col gap-2 pt-2">
+        <Button
+          variant="primary"
+          onClick={handleNext}
+          disabled={!selected}
+          className="w-full"
+        >
+          {selected ? 'Next →' : 'Select a question type to continue'}
+        </Button>
       </div>
 
     </div>

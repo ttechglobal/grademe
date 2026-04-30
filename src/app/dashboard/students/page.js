@@ -174,9 +174,9 @@ export default function StudentsPage() {
     </div>
   )
 
-  // Derived values
+  // Derived values — submissions is the array from the API, totalAssessments is the count
   const totalStudents    = students.length
-  const totalSubmissions = students.reduce((acc, s) => acc + (s.submission_count ?? 0), 0)
+  const totalSubmissions = students.reduce((acc, s) => acc + (s.submissions?.length ?? s.totalAssessments ?? 0), 0)
   const scored           = students.filter((s) => s.avgScore !== null)
   const overallAvg       = scored.length > 0
     ? Math.round(scored.reduce((acc, s) => acc + s.avgScore, 0) / scored.length)
@@ -278,7 +278,7 @@ export default function StudentsPage() {
                 {student.full_name}
               </p>
               <div className="flex items-center gap-3 mt-0.5 text-xs text-ink-4">
-                <span>{student.submission_count ?? 0} assessment{(student.submission_count ?? 0) !== 1 ? 's' : ''}</span>
+                <span>{(student.submissions?.length ?? student.totalAssessments ?? 0)} assessment{((student.submissions?.length ?? student.totalAssessments ?? 0) !== 1 ? 's' : '')} taken</span>
                 <span>Last active {relTime(student.last_active)}</span>
               </div>
             </div>

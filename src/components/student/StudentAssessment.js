@@ -2,12 +2,99 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import {
-  Clock, AlertTriangle, CheckCircle, XCircle,
+  Clock, AlertTriangle, CheckCircle, XCircle, CheckCircle2,
   History, X, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import MathRenderer        from '@/components/ui/MathRenderer'
 import ExplanationRenderer from '@/components/ui/ExplanationRenderer'
+import { gradeAnswer }     from '@/lib/gradeAnswer'
 import { cn } from '@/lib/utils'
+
+// ── Confetti — lightweight CSS-only particles for celebration ─────────────
+function Confetti() {
+  const pieces = Array.from({ length: 28 }, (_, i) => ({
+    id:    i,
+    color: ['#f5a623', '#4db8b8', '#2da44e', '#e5534b', '#0f2e2e', '#ffecc4'][i % 6],
+    left:  `${(i * 37) % 100}%`,
+    delay: `${(i * 0.11) % 1}s`,
+    dur:   `${2.5 + (i % 4) * 0.3}s`,
+    size:  i % 3 === 0 ? 8 : 6,
+  }))
+
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-10" aria-hidden="true">
+      <style>{`
+        @keyframes confetti-fall {
+          0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+          80%  { opacity: 1; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+      `}</style>
+      {pieces.map((p) => (
+        <div
+          key={p.id}
+          style={{
+            position:        'absolute',
+            top:             '-10px',
+            left:            p.left,
+            width:           p.size,
+            height:          p.size,
+            backgroundColor: p.color,
+            borderRadius:    p.id % 2 === 0 ? '50%' : '2px',
+            animation:       `confetti-fall ${p.dur} ${p.delay} ease-in forwards`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ── Submit confirmation modal ──────────────────────────────────────────────
+// Replaces window.confirm() — bottom sheet on mobile, centered modal on desktop.
+function SubmitConfirmModal({ answered, total, onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      {/* Overlay */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+      {/* Sheet / Modal */}
+      <div className={cn(
+        'relative bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl',
+        'px-6 pt-6 pb-8 shadow-2xl',
+        'animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:fade-in sm:zoom-in-95 duration-200'
+      )}>
+        {/* Drag handle — mobile only */}
+        <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5 sm:hidden" />
+
+        <div className="text-3xl mb-3">📋</div>
+        <h2 className="font-display text-xl font-bold text-ink mb-2">
+          Ready to submit?
+        </h2>
+        <p className="text-sm text-ink-3 leading-relaxed mb-6">
+          You have answered <strong className="text-ink">{answered} of {total}</strong> questions.
+          Once submitted you cannot change your answers.
+        </p>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-3 rounded-2xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors"
+          >
+            Go Back
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 py-3 rounded-2xl bg-brand-900 text-white text-sm font-bold hover:bg-brand-700 transition-colors"
+          >
+            Submit Now →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── Copy-protection hook ──────────────────────────────────────────────────
 // Applied only on TestScreen and ReviewScreen — never on StartScreen.
@@ -165,7 +252,7 @@ function PastReviewScreen({ entry, onBack }) {
   if (!q) return null
 
   const sa      = answers[idx] ?? ''
-  const ok      = sa.toUpperCase() === (q.answer ?? '').toUpperCase()
+  const ok      = sa.toUpperCase() === (q.answer ?? '').toUpperCase()  // PastReview — type may not be stored, safe fallback
   const total   = questions.length
 
   return (
@@ -202,26 +289,22 @@ function PastReviewScreen({ entry, onBack }) {
 }
 
 // ── Shared question review card ────────────────────────────────────────────
-// Used by both PastReviewScreen and the live ReviewScreen.
-// Key prop on HintButton ensures hint state resets on each new question.
 function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, subject }) {
   return (
     <div className="flex flex-col gap-4">
-      {/* Result banner */}
+      {/* Per-question message */}
       <div className={cn(
-        'flex items-center gap-3 px-5 py-3.5 rounded-2xl border-2',
+        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2',
         ok
           ? 'bg-success-light border-success/30 text-success'
-          : 'bg-danger-light border-danger/30 text-danger'
+          : 'bg-brand-50 border-brand-200 text-brand-700'
       )}>
         {ok
-          ? <CheckCircle size={20} className="flex-shrink-0" />
-          : <XCircle    size={20} className="flex-shrink-0" />}
-        <span className="text-sm font-bold">
-          {ok ? 'Correct!' : 'Incorrect'}
-        </span>
-        <span className="text-xs opacity-60 ml-auto">
-          Question {idx + 1} of {total}
+          ? <CheckCircle2 size={18} className="flex-shrink-0 text-success" />
+          : <XCircle      size={18} className="flex-shrink-0 text-brand-500" />
+        }
+        <span className="text-sm font-semibold">
+          {ok ? 'You got this one right! Great job.' : "Let's look at this one together."}
         </span>
       </div>
 
@@ -233,8 +316,45 @@ function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, s
         </p>
       </div>
 
-      {/* Answer options */}
-      {q.options?.length > 0 && (
+      {/* Answer options — branched by question type */}
+      {(q.type === 'truefalse' || q.question_type === 'true_false') ? (
+        /* ── True/False review ──────────────────────────────────────────── */
+        <div className="grid grid-cols-2 gap-3">
+          {['True', 'False'].map((val) => {
+            const isCorrect  = val.toLowerCase() === (q.answer ?? '').toLowerCase()
+            const isStudent  = val.toLowerCase() === (sa ?? '').toLowerCase()
+
+            let style = 'border-border bg-white text-ink-3'
+            let badge = null
+
+            if (isCorrect && isStudent) {
+              style = 'border-success bg-success-light text-success font-semibold'
+              badge = <span className="text-xs font-bold">✓ Correct</span>
+            } else if (isCorrect) {
+              style = 'border-success/60 bg-success-light/60 text-success'
+              badge = <span className="text-xs font-bold opacity-80">✓ Correct answer</span>
+            } else if (isStudent) {
+              style = 'border-danger bg-danger-light text-danger font-semibold'
+              badge = <span className="text-xs font-bold">✗ Your answer</span>
+            }
+
+            return (
+              <div key={val} className={cn(
+                'flex flex-col items-center justify-center gap-2 py-5 rounded-2xl border-2 text-center',
+                style
+              )}>
+                {val === 'True'
+                  ? <CheckCircle2 size={28} className={isCorrect && isStudent ? 'text-success' : isCorrect ? 'text-success' : isStudent ? 'text-danger' : 'text-ink-4'} />
+                  : <XCircle      size={28} className={isCorrect && isStudent ? 'text-success' : isCorrect ? 'text-success' : isStudent ? 'text-danger' : 'text-ink-4'} />
+                }
+                <span className="text-base font-bold">{val}</span>
+                {badge && <div className="text-xs">{badge}</div>}
+              </div>
+            )
+          })}
+        </div>
+      ) : q.options?.length > 0 ? (
+        /* ── MCQ review ─────────────────────────────────────────────────── */
         <div className="flex flex-col gap-2.5">
           {q.options.map((opt, oi) => {
             const letter     = String.fromCharCode(65 + oi)
@@ -275,7 +395,7 @@ function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, s
             )
           })}
         </div>
-      )}
+      ) : null}
 
       {/* Hint — hidden behind button, key resets state per question */}
       <HintButton key={`hint-${idx}`} hint={q.hint} />
@@ -337,45 +457,94 @@ function ReviewNav({ idx, total, onPrev, onNext, onDone }) {
   )
 }
 
-// ── Start screen ───────────────────────────────────────────────────────────
+// ── Start screen — companion welcome ───────────────────────────────────────
 function StartScreen({ assessment, onStart }) {
   const [name,         setName]         = useState('')
   const [showHistory,  setShowHistory]  = useState(false)
   const [reviewEntry,  setReviewEntry]  = useState(null)
   const [historyCount, setHistoryCount] = useState(0)
+  const [phase,        setPhase]        = useState('welcome') // 'welcome' | 'transition'
+  const [committed,    setCommitted]    = useState('')
 
   useEffect(() => { setHistoryCount(loadHistory().length) }, [])
 
   const canStart = name.trim().length >= 2
 
+  const assessmentTypeLabel = {
+    quiz:       'quiz',
+    test:       'test',
+    assignment: 'assignment',
+  }[assessment.assessment_type ?? 'quiz'] ?? 'assessment'
+
+  const greetingCopy = {
+    quiz:       `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} quiz! Ready to show what you know?`,
+    test:       `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} test. Read each question carefully.`,
+    assignment: `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} assignment. Take your time!`,
+  }[assessment.assessment_type ?? 'quiz'] ?? 'Let\'s get started!'
+
+  const handleGo = () => {
+    if (!canStart) return
+    const trimmed = name.trim()
+    setCommitted(trimmed)
+    setPhase('transition')
+    // After 2 seconds advance to the test
+    setTimeout(() => onStart(trimmed), 2000)
+  }
+
   if (reviewEntry) {
     return <PastReviewScreen entry={reviewEntry} onBack={() => setReviewEntry(null)} />
   }
 
+  // ── Transition screen ────────────────────────────────────────────────────
+  if (phase === 'transition') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex flex-col items-center justify-center p-5">
+        <div className="flex flex-col items-center gap-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-amber/20 flex items-center justify-center">
+            <span className="text-3xl">✊</span>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-white mb-1">
+              Hi {committed}!
+            </p>
+            <p className="text-white/70 text-base">
+              You've got this. Let's begin!
+            </p>
+          </div>
+          <div className="flex gap-1.5 mt-2">
+            {[0,1,2].map((i) => (
+              <div key={i} className="w-2 h-2 rounded-full bg-amber/60 animate-pulse"
+                style={{ animationDelay: `${i * 0.2}s` }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Welcome screen ───────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex flex-col items-center justify-center p-5">
-      <div className="w-full max-w-md flex flex-col gap-4">
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-sm flex flex-col items-center gap-5">
 
-          <div className="bg-gradient-to-br from-brand-900 to-brand-700 px-7 pt-7 pb-6">
-            <div className="inline-flex items-center gap-2 bg-white/10 rounded-full px-3 py-1.5 mb-4">
-              <div className="w-5 h-5 rounded-full bg-amber flex items-center justify-center">
-                <span className="text-[10px] font-bold text-brand-900">G</span>
-              </div>
-              <span className="text-xs font-semibold text-white/80">GradeMee Assessment</span>
-            </div>
-            <h1 className="font-display text-xl font-bold text-white mb-2 leading-snug">
-              {assessment.title}
-            </h1>
-            <div className="flex flex-wrap gap-2">
+        {/* Card */}
+        <div className="w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
+
+          {/* Greeting header */}
+          <div className="bg-gradient-to-br from-brand-800 to-brand-900 px-7 pt-7 pb-6 text-center">
+            <p className="text-2xl font-bold text-white mb-1">Hey there!</p>
+            <p className="text-white/70 text-sm leading-relaxed">
+              {greetingCopy}
+            </p>
+            {assessment.title && (
+              <p className="text-amber/90 text-xs font-semibold mt-2 leading-relaxed">
+                Topic: {assessment.title}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
               <span className="text-xs font-medium bg-white/10 text-white/70 px-2.5 py-1 rounded-full">
-                📝 {assessment.questions?.length ?? 0} questions
+                {assessment.questions?.length ?? 0} questions
               </span>
-              {assessment.subject && (
-                <span className="text-xs font-medium bg-white/10 text-white/70 px-2.5 py-1 rounded-full capitalize">
-                  {assessment.subject.replace(/_/g, ' ')}
-                </span>
-              )}
               {assessment.time_limit_mins && (
                 <span className="text-xs font-semibold bg-amber/20 text-amber px-2.5 py-1 rounded-full flex items-center gap-1">
                   <Clock size={10} /> {assessment.time_limit_mins}m
@@ -384,41 +553,39 @@ function StartScreen({ assessment, onStart }) {
             </div>
           </div>
 
+          {/* Name input */}
           <div className="px-7 py-6 flex flex-col gap-4">
             <div>
-              <h2 className="font-display text-lg font-bold text-ink mb-0.5">Enter your full name</h2>
-              <p className="text-sm text-ink-3">Your teacher will see your results.</p>
+              <p className="text-sm font-bold text-ink mb-0.5">Enter your full name</p>
+              <p className="text-xs text-ink-4">Your teacher will see your results.</p>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && canStart) onStart(name.trim()) }}
-                placeholder="e.g. Ayomide Bello"
-                autoComplete="name"
-                autoFocus
-                className="w-full px-4 py-4 bg-surface border-2 border-border rounded-2xl text-base text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all"
-              />
-              <p className="text-xs text-ink-4 px-1 leading-relaxed">
-                Please enter your first and last name so your teacher can identify you correctly.
-              </p>
-            </div>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleGo() }}
+              placeholder="e.g. Ayomide Bello"
+              autoComplete="name"
+              autoFocus
+              className="w-full px-4 py-4 bg-surface border-2 border-border rounded-2xl text-base text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all"
+            />
             {assessment.time_limit_mins && (
-              <div className="bg-amber-light border border-amber/20 rounded-xl px-4 py-3 text-xs text-amber leading-relaxed">
-                ⚠️ This assessment has a {assessment.time_limit_mins}-minute timer. It starts when you click Begin.
+              <div className="bg-amber-light border border-amber/20 rounded-xl px-4 py-3 text-xs text-amber leading-relaxed flex items-start gap-2">
+                <Clock size={13} className="flex-shrink-0 mt-0.5" />
+                This assessment has a {assessment.time_limit_mins}-minute timer. It starts when you begin.
               </div>
             )}
             <button
-              onClick={() => canStart && onStart(name.trim())}
+              onClick={handleGo}
               disabled={!canStart}
               className="w-full py-4 bg-brand-900 text-white font-bold text-base rounded-2xl hover:bg-brand-700 transition-all shadow-lg shadow-brand-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Begin Assessment →
+              I'm Ready — Let's Go! →
             </button>
           </div>
         </div>
 
+        {/* History button */}
         {historyCount > 0 && (
           <button onClick={() => setShowHistory(true)}
             className="flex items-center justify-center gap-2 w-full py-3 bg-white/10 hover:bg-white/15 text-white text-sm font-semibold rounded-2xl border border-white/20 transition-colors">
@@ -499,37 +666,69 @@ function HistoryPanel({ studentName, onReviewPast, onClose }) {
 
 // ── Test screen ────────────────────────────────────────────────────────────
 function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
-  const questions  = assessment.questions ?? []
-  const [answers,  setAnswers]  = useState({})
-  const [current,  setCurrent]  = useState(0)
-  const [showWarn, setShowWarn] = useState(false)
+  const questions    = assessment.questions ?? []
+  const [answers,    setAnswers]    = useState({})
+  const [current,    setCurrent]    = useState(0)
+  const [showWarn,   setShowWarn]   = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const startTime  = useRef(Date.now())
-  const answered   = Object.keys(answers).length
-  const q          = questions[current]
+  const startTime    = useRef(Date.now())
+  const answered     = Object.keys(answers).length
+  const q            = questions[current]
+
+  // Detect if current question is True/False — checks both type fields defensively
+  const isTrueFalse = (question) =>
+    question?.type === 'truefalse' ||
+    question?.type === 'true_false' ||
+    question?.question_type === 'true_false'
+
+  // Current question has an answer selected
+  const hasAnswer = answers[current] !== undefined
 
   useEffect(() => {
-    if (timedOut && !submitting) handleSubmit(true)
+    if (timedOut && !submitting) doSubmit()
   }, [timedOut])
 
-  // Block copying during the assessment
-  useCopyProtection(true)
-
-  const handleSubmit = useCallback(async (auto = false) => {
+  // Called when the tutor confirms submission (or timer expires)
+  const doSubmit = useCallback(() => {
     if (submitting) return
-    if (!auto && answered < questions.length) {
-      if (!confirm(`You've answered ${answered} of ${questions.length}. Submit anyway?`)) return
-    }
     setSubmitting(true)
     const timeTakenSecs = Math.round((Date.now() - startTime.current) / 1000)
     onSubmit(answers, timeTakenSecs)
-  }, [answers, answered, questions.length, submitting, onSubmit])
+  }, [answers, submitting, onSubmit])
+
+  // Tap Submit button → show modal if any unanswered, else submit immediately
+  const handleSubmitClick = useCallback(() => {
+    if (submitting) return
+    if (answered < questions.length) {
+      setShowConfirm(true)
+    } else {
+      doSubmit()
+    }
+  }, [answered, questions.length, submitting, doSubmit])
+
+  const handleSubmit = useCallback(async (auto = false) => {
+    if (auto) { doSubmit(); return }
+    handleSubmitClick()
+  }, [doSubmit, handleSubmitClick])
+
+  // Block copying during the assessment
+  useCopyProtection(true)
 
   return (
     <div
       className="min-h-screen bg-[#f7f7f5] flex flex-col"
       style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
     >
+      {/* Submit confirmation modal — replaces window.confirm() */}
+      {showConfirm && (
+        <SubmitConfirmModal
+          answered={answered}
+          total={questions.length}
+          onConfirm={() => { setShowConfirm(false); doSubmit() }}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
 
       {/* Top bar */}
       <div className="bg-brand-900 px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-lg">
@@ -605,27 +804,64 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
 
             {/* MCQ options */}
             <div className="flex flex-col gap-3">
-              {q.options?.map((opt, oi) => {
-                const letter = String.fromCharCode(65 + oi)
-                const sel    = answers[current] === letter
-                return (
-                  <button key={oi}
-                    onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
-                    className={cn(
-                      'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all',
-                      sel ? 'border-brand-600 bg-brand-50 shadow-sm' : 'border-border bg-white hover:border-brand-300'
-                    )}
-                  >
-                    <span className={cn(
-                      'w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors',
-                      sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4'
-                    )}>{letter}</span>
-                    <span className={cn('text-sm font-medium leading-relaxed', sel ? 'text-brand-800' : 'text-ink')}>
-                      <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                    </span>
-                  </button>
-                )
-              })}
+              {/* ── True/False question ─────────────────────────────────── */}
+              {isTrueFalse(q) ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {['True', 'False'].map((val) => {
+                    const sel = answers[current] === val
+                    return (
+                      <button
+                        key={val}
+                        onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
+                        className={cn(
+                          'flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 text-left transition-all',
+                          sel
+                            ? val === 'True'
+                              ? 'border-success bg-success-light shadow-sm'
+                              : 'border-danger bg-danger-light shadow-sm'
+                            : 'border-border bg-white hover:border-brand-300'
+                        )}
+                      >
+                        {val === 'True'
+                          ? <CheckCircle2 size={32} className={sel ? 'text-success' : 'text-ink-4'} />
+                          : <XCircle      size={32} className={sel ? 'text-danger'  : 'text-ink-4'} />
+                        }
+                        <span className={cn(
+                          'text-lg font-bold',
+                          sel
+                            ? val === 'True' ? 'text-success' : 'text-danger'
+                            : 'text-ink'
+                        )}>
+                          {val}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                /* ── MCQ options ────────────────────────────────────────── */
+                q.options?.map((opt, oi) => {
+                  const letter = String.fromCharCode(65 + oi)
+                  const sel    = answers[current] === letter
+                  return (
+                    <button key={oi}
+                      onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
+                      className={cn(
+                        'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all',
+                        sel ? 'border-brand-600 bg-brand-50 shadow-sm' : 'border-border bg-white hover:border-brand-300'
+                      )}
+                    >
+                      <span className={cn(
+                        'w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors',
+                        sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4'
+                      )}>{letter}</span>
+                      <span className={cn('text-sm font-medium leading-relaxed', sel ? 'text-brand-800' : 'text-ink')}>
+                        <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
+                      </span>
+                    </button>
+                  )
+                })
+              )}
             </div>
 
             {/* Nav */}
@@ -635,13 +871,19 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
                 ← Previous
               </button>
               {current < questions.length - 1 ? (
-                <button onClick={() => setCurrent((p) => p + 1)}
-                  className="px-5 py-2.5 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 transition-colors">
+                <button
+                  onClick={() => setCurrent((p) => p + 1)}
+                  disabled={!hasAnswer}
+                  className="px-5 py-2.5 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
                   Next →
                 </button>
               ) : (
-                <button onClick={() => handleSubmit(false)} disabled={submitting}
-                  className="px-7 py-2.5 rounded-xl bg-amber text-ink text-sm font-bold hover:bg-amber/90 disabled:opacity-60 transition-colors">
+                <button
+                  onClick={handleSubmitClick}
+                  disabled={submitting}
+                  className="px-7 py-2.5 rounded-xl bg-amber text-ink text-sm font-bold hover:bg-amber/90 disabled:opacity-60 transition-colors"
+                >
                   {submitting ? 'Submitting…' : `Submit (${answered}/${questions.length})`}
                 </button>
               )}
@@ -653,34 +895,99 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
   )
 }
 
-// ── Result screen ──────────────────────────────────────────────────────────
-function ResultScreen({ score, correct, total, onReview }) {
+// ── Result screen — animated score ring + companion messaging ─────────────
+function ResultScreen({ score, correct, total, onReview, studentName }) {
   const pct = score ?? Math.round((correct / total) * 100)
+  const [displayed, setDisplayed] = useState(0)
+  const [showConfetti, setShowConfetti] = useState(pct >= 80)
+
+  // Count-up animation — ease-out over 1.5s
+  useEffect(() => {
+    const duration = 1500
+    const start    = Date.now()
+    const tick = () => {
+      const elapsed  = Date.now() - start
+      const progress = Math.min(elapsed / duration, 1)
+      const eased    = 1 - Math.pow(1 - progress, 3)
+      setDisplayed(Math.round(eased * pct))
+      if (progress < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [pct])
+
+  // Stop confetti after 3 seconds
+  useEffect(() => {
+    if (!showConfetti) return
+    const t = setTimeout(() => setShowConfetti(false), 3000)
+    return () => clearTimeout(t)
+  }, [showConfetti])
+
+  const firstName = (studentName ?? '').split(' ')[0] || 'there'
+  const ringColor = pct >= 80 ? '#2da44e' : pct >= 50 ? '#f5a623' : '#e5534b'
+  const heading   = pct >= 80 ? `Amazing work, ${firstName}!`
+                  : pct >= 50 ? `Well done, ${firstName}!`
+                  : `Keep going, ${firstName}! 💪`
+  const sub       = pct >= 80 ? `You scored ${pct}% — that's excellent! 🎉`
+                  : pct >= 50 ? `You scored ${pct}%. You're getting there! Let's see where you can improve.`
+                  : `You scored ${pct}%. Every attempt makes you stronger.`
+
+  const radius = 52
+  const circ   = 2 * Math.PI * radius
+  const offset = circ - (displayed / 100) * circ
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-900 to-brand-700 flex items-center justify-center p-5">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className={cn('px-7 py-8 text-center', pct >= 50 ? 'bg-success-light' : 'bg-danger-light')}>
-          <div className="text-6xl mb-3">{pct >= 80 ? '🏆' : pct >= 60 ? '🎉' : pct >= 50 ? '👍' : '📚'}</div>
-          <p className="font-display text-4xl font-extrabold text-ink mb-1">{pct}%</p>
-          <p className={cn('font-semibold text-sm', pct >= 50 ? 'text-success' : 'text-danger')}>
-            {pct >= 80 ? 'Excellent work!' : pct >= 60 ? 'Good effort!' : pct >= 50 ? 'You passed!' : 'Keep practising!'}
-          </p>
-        </div>
-        <div className="px-7 py-6 flex flex-col gap-5">
-          <div className="grid grid-cols-3 gap-3 text-center">
-            {[
-              { val: correct,         label: 'Correct', color: 'text-success' },
-              { val: total - correct, label: 'Wrong',   color: 'text-danger'  },
-              { val: total,           label: 'Total',   color: 'text-ink'     },
-            ].map((s, i) => (
-              <div key={i} className="bg-surface rounded-2xl p-4">
-                <p className={cn('font-display text-2xl font-bold', s.color)}>{s.val}</p>
-                <p className="text-xs text-ink-4 mt-1">{s.label}</p>
-              </div>
-            ))}
+    <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex items-center justify-center p-5">
+      {showConfetti && <Confetti />}
+
+      <div className="w-full max-w-sm flex flex-col items-center gap-6">
+
+        {/* Animated score ring */}
+        <div className="relative w-36 h-36 flex items-center justify-center">
+          <svg width="144" height="144" className="-rotate-90">
+            <circle cx="72" cy="72" r={radius} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" />
+            <circle
+              cx="72" cy="72" r={radius}
+              fill="none"
+              stroke={ringColor}
+              strokeWidth="10"
+              strokeDasharray={circ}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+              style={{ transition: 'stroke-dashoffset 0.05s' }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="font-display text-4xl font-bold text-white leading-none">{displayed}%</span>
+            <span className="text-white/50 text-xs mt-1">Score</span>
           </div>
-          <button onClick={onReview}
-            className="w-full py-3.5 bg-brand-900 text-white font-bold rounded-2xl hover:bg-brand-700 transition-colors">
+        </div>
+
+        {/* Message */}
+        <div className="text-center">
+          <p className="text-xl font-bold text-white mb-1">{heading}</p>
+          <p className="text-white/70 text-sm leading-relaxed max-w-xs">{sub}</p>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3 w-full">
+          {[
+            { val: correct,         label: 'Correct', color: 'text-success' },
+            { val: total - correct, label: 'Wrong',   color: 'text-danger'  },
+            { val: total,           label: 'Total',   color: 'text-white'   },
+          ].map((s) => (
+            <div key={s.label} className="bg-white/10 rounded-2xl py-4 text-center">
+              <p className={cn('font-display text-2xl font-bold', s.color)}>{s.val}</p>
+              <p className="text-xs text-white/50 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Action */}
+        <div className="w-full">
+          <button
+            onClick={onReview}
+            className="w-full py-3.5 bg-white text-brand-900 font-bold rounded-2xl hover:bg-white/90 transition-colors"
+          >
             Review My Answers →
           </button>
         </div>
@@ -699,7 +1006,7 @@ function ReviewScreen({ assessment, answers, onDone }) {
   if (!q) return null
 
   const sa  = answers[idx] ?? ''
-  const ok  = sa.toUpperCase() === (q.answer ?? '').toUpperCase()
+  const ok  = gradeAnswer(sa, q.answer, q.type ?? q.question_type)
 
   return (
     <div
@@ -729,7 +1036,7 @@ function ReviewScreen({ assessment, answers, onDone }) {
       <div className="flex gap-1.5 px-4 py-3 overflow-x-auto bg-white border-b border-border">
         {questions.map((_, i) => {
           const a   = answers[i] ?? ''
-          const cor = a.toUpperCase() === (questions[i].answer ?? '').toUpperCase()
+          const cor = gradeAnswer(a, questions[i].answer, questions[i].type ?? questions[i].question_type)
           return (
             <button key={i} onClick={() => setIdx(i)}
               className={cn(
@@ -783,7 +1090,7 @@ export default function StudentAssessment({ assessment }) {
     const ansArr    = Array.from({ length: questions.length }, (_, i) => answersMap[i] ?? '')
     let correct = 0
     for (let i = 0; i < questions.length; i++) {
-      if ((ansArr[i] ?? '').toUpperCase() === (questions[i].answer ?? '').toUpperCase()) correct++
+      if (gradeAnswer(ansArr[i], questions[i].answer, questions[i].type ?? questions[i].question_type)) correct++
     }
     const score = Math.round((correct / questions.length) * 100)
 
@@ -829,7 +1136,7 @@ export default function StudentAssessment({ assessment }) {
     return <TestScreen assessment={assessment} studentName={studentName} onSubmit={handleSubmit} timedOut={timedOut} />
   }
   if (phase === 'result' && result) {
-    return <ResultScreen score={result.score} correct={result.correct} total={result.total} onReview={() => setPhase('review')} />
+    return <ResultScreen score={result.score} correct={result.correct} total={result.total} studentName={studentName} onReview={() => setPhase('review')} />
   }
   if (phase === 'review') {
     return <ReviewScreen assessment={assessment} answers={answers} onDone={() => setPhase('result')} />

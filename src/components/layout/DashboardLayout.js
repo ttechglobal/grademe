@@ -23,16 +23,23 @@ export default async function DashboardLayout({ children }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-surface">
-      <div className="hidden md:flex">
+    // Fixed to the viewport — overflow:hidden ensures nothing bleeds outside
+    <div className="flex h-screen overflow-hidden bg-surface">
+
+      {/* Sidebar — fixed height, never stretches with page content */}
+      <div className="hidden md:flex h-screen flex-shrink-0">
         <Sidebar />
       </div>
-      <div className="flex-1 flex flex-col min-w-0">
+
+      {/* Right column — topbar pinned at top, content area scrolls independently */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Topbar user={currentUser} />
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto pb-24 md:pb-6">
+        {/* Only this element scrolls — sidebar remains completely unaffected */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
           {children}
         </main>
       </div>
+
       <BottomNav />
     </div>
   )

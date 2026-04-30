@@ -1,19 +1,31 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient as createAdmin } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
 
-const ADMIN_EMAILS = ['devg12025@gmail.com']
+// Admin emails are checked here AND in the page component.
+// Never trust an email sent from the client — always verify the session.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? 'devg12025@gmail.com')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
 
 export async function POST(request) {
   try {
-    const { filter, customStart, customEnd, section, adminEmail } = await request.json()
+    // ── Step 1: Verify real Supabase session — never trust client-sent email ─
+    const supabaseUser = await createClient()
+    const { data: { user }, error: authErr } = await supabaseUser.auth.getUser()
 
-    // Verify admin
-    if (!adminEmail || !ADMIN_EMAILS.includes(adminEmail)) {
+    if (authErr || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Service role — bypasses ALL RLS
-    const supabase = createClient(
+    if (!ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { filter, customStart, customEnd, section } = await request.json()
+
+    // ── Step 2: Service role client — bypasses RLS for admin queries ─────────
+    const supabase = createAdmin(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { autoRefreshToken: false, persistSession: false } }
@@ -60,22 +72,35 @@ export async function POST(request) {
         { count: totalAssessments, error: e2 },
         { count: totalSubmissions, error: e3 },
         { count: totalQuestions,   error: e4 },
+        { count: creditsInterest,  error: e5 },
+        { data:  useCaseRows,      error: e6 },
       ] = await Promise.all([
         supabase.from('profiles')    .select('*', { count: 'exact', head: true }),
         supabase.from('assessments') .select('*', { count: 'exact', head: true }),
         supabase.from('submissions') .select('*', { count: 'exact', head: true }),
         supabase.from('questions')   .select('*', { count: 'exact', head: true }),
+        supabase.from('profiles')    .select('*', { count: 'exact', head: true }).eq('credits_interest', true),
+        supabase.from('profiles')    .select('use_case_profile'),
       ])
+
+      // Aggregate use case counts
+      const useCaseCounts = {}
+      for (const row of useCaseRows ?? []) {
+        const key = row.use_case_profile ?? 'k12_tutor'
+        useCaseCounts[key] = (useCaseCounts[key] ?? 0) + 1
+      }
 
       if (e1 || e2 || e3 || e4) {
         console.error('Totals errors:', { e1, e2, e3, e4 })
       }
 
       return NextResponse.json({
-        tutors:      totalTutors      ?? 0,
-        assessments: totalAssessments ?? 0,
-        submissions: totalSubmissions ?? 0,
-        questions:   totalQuestions   ?? 0,
+        tutors:          totalTutors      ?? 0,
+        assessments:     totalAssessments ?? 0,
+        submissions:     totalSubmissions ?? 0,
+        questions:       totalQuestions   ?? 0,
+        creditsInterest: creditsInterest  ?? 0,
+        useCaseCounts,
       })
     }
 
@@ -169,7 +194,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Unknown section' }, { status: 400 })
 
   } catch (err) {
-    console.error('Admin stats API error:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error('[/api/admin/stats]', err.message)
+    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
   }
 }
