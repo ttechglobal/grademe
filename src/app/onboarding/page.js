@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import UseCaseProfileGrid from '@/components/ui/UseCaseProfileGrid'
 
 const TEACHING_MODES = [
   { value: 'online',    label: 'Online',    icon: '💻' },
@@ -20,15 +21,6 @@ const HEARD_FROM = [
   { value: 'other',        label: 'Other',                 icon: '✨' },
 ]
 
-const SCHOOL_TYPES = [
-  { value: 'primary',          label: 'Primary / Elementary',  icon: '🏫' },
-  { value: 'secondary',        label: 'Secondary / High School', icon: '🎓' },
-  { value: 'university',       label: 'University / College',  icon: '🏛️' },
-  { value: 'private_tutoring', label: 'Private Tutoring',      icon: '👤' },
-  { value: 'online_school',    label: 'Online School',         icon: '💻' },
-  { value: 'other',            label: 'Other',                 icon: '✨' },
-]
-
 const YEARS_TEACHING = [
   { value: '0_1',     label: 'Less than 1 year' },
   { value: '2_5',     label: '2–5 years'        },
@@ -37,7 +29,7 @@ const YEARS_TEACHING = [
 ]
 
 // Single-select option button
-function SingleOption({ selected, onClick, icon, label }) {
+function SingleOption({ selected, onClick, icon, label, description }) {
   return (
     <button
       type="button"
@@ -50,38 +42,11 @@ function SingleOption({ selected, onClick, icon, label }) {
       )}
     >
       {icon && <span className="text-xl flex-shrink-0">{icon}</span>}
-      <span className="flex-1">{label}</span>
-      {selected && <span className="ml-auto text-brand-600 font-bold">✓</span>}
-    </button>
-  )
-}
-
-// Multi-select option button
-function MultiOption({ selected, onClick, icon, label }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left text-sm font-medium transition-all w-full',
-        selected
-          ? 'border-brand-600 bg-brand-50 text-brand-800'
-          : 'border-border bg-white text-ink hover:border-brand-200'
-      )}
-    >
-      {/* Checkbox indicator */}
-      <div className={cn(
-        'w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors',
-        selected ? 'border-brand-600 bg-brand-600' : 'border-border bg-white'
-      )}>
-        {selected && (
-          <svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden="true">
-            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold leading-snug">{label}</p>
+        {description && <p className="text-xs text-ink-4 mt-0.5 font-normal leading-snug">{description}</p>}
       </div>
-      {icon && <span className="text-xl flex-shrink-0">{icon}</span>}
-      <span className="flex-1">{label}</span>
+      {selected && <span className="ml-auto text-brand-600 font-bold flex-shrink-0">✓</span>}
     </button>
   )
 }
@@ -117,22 +82,17 @@ function StepHeader({ current, total, title, subtitle }) {
 export default function OnboardingPage() {
   const router = useRouter()
 
-  const [step,          setStep]          = useState(1)
+  // Step 0 = use case profile (new first step)
+  // Steps 1–3 = existing questions (teaching mode, heard from, years teaching)
+  const [step,          setStep]          = useState(0)
+  const [useCaseProfile, setUseCaseProfile] = useState('')
   const [teachingMode,  setTeachingMode]  = useState('')
   const [heardFrom,     setHeardFrom]     = useState('')
-  const [schoolTypes,   setSchoolTypes]   = useState([]) // multi-select array
   const [yearsTeaching, setYearsTeaching] = useState('')
   const [saving,        setSaving]        = useState(false)
 
+  // Total steps shown in progress bar: 4 (use case + 3 questions)
   const totalSteps = 4
-
-  const toggleSchoolType = (value) => {
-    setSchoolTypes((prev) =>
-      prev.includes(value)
-        ? prev.filter((v) => v !== value)
-        : [...prev, value]
-    )
-  }
 
   const saveSurvey = async () => {
     setSaving(true)
@@ -141,20 +101,25 @@ export default function OnboardingPage() {
       const { data: { session } } = await supabase.auth.getSession()
 
       if (session?.user) {
+        // Save use case profile to profiles table
+        await supabase
+          .from('profiles')
+          .update({
+            onboarding_complete: true,
+            use_case_profile:    useCaseProfile || 'k12_tutor',
+          })
+          .eq('id', session.user.id)
+
+        // Save the rest of the survey
         await supabase
           .from('onboarding_surveys')
           .upsert({
-            user_id:        session.user.id,
-            teaching_mode:  teachingMode  || null,
-            heard_from:     heardFrom     || null,
-            school_type:    schoolTypes.join(',') || null, // store as comma-separated
-            years_teaching: yearsTeaching || null,
+            user_id:          session.user.id,
+            use_case_profile: useCaseProfile || 'k12_tutor',
+            teaching_mode:    teachingMode   || null,
+            heard_from:       heardFrom      || null,
+            years_teaching:   yearsTeaching  || null,
           })
-
-        await supabase
-          .from('profiles')
-          .update({ onboarding_complete: true })
-          .eq('id', session.user.id)
       }
     } catch (err) {
       console.error('Survey save error:', err)
@@ -169,7 +134,10 @@ export default function OnboardingPage() {
       if (session?.user) {
         await supabase
           .from('profiles')
-          .update({ onboarding_complete: true })
+          .update({
+            onboarding_complete: true,
+            use_case_profile:    'k12_tutor', // safe default for existing users
+          })
           .eq('id', session.user.id)
       }
     } catch {
@@ -197,11 +165,35 @@ export default function OnboardingPage() {
 
         <div className="bg-white border border-border rounded-3xl p-8 shadow-card flex flex-col gap-6">
 
+          {/* ── Step 0: Use case profile (FIRST STEP — new) ── */}
+          {step === 0 && (
+            <>
+              <StepHeader
+                current={1}
+                total={totalSteps}
+                title="How will you use GradeMee?"
+                subtitle="We'll set things up perfectly for you."
+              />
+              <UseCaseProfileGrid
+                selected={useCaseProfile}
+                onChange={setUseCaseProfile}
+              />
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                disabled={!useCaseProfile}
+                className="w-full py-3 rounded-xl bg-brand-800 text-white text-sm font-bold hover:bg-brand-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Continue →
+              </button>
+            </>
+          )}
+
           {/* ── Step 1: Teaching mode ── */}
           {step === 1 && (
             <>
               <StepHeader
-                current={1}
+                current={2}
                 total={totalSteps}
                 title="How do you teach?"
               />
@@ -216,14 +208,23 @@ export default function OnboardingPage() {
                   />
                 ))}
               </div>
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                disabled={!teachingMode}
-                className="w-full py-3 rounded-xl bg-brand-800 text-white text-sm font-bold hover:bg-brand-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Continue →
-              </button>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setStep(0)}
+                  className="flex-1 py-3 rounded-xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors"
+                >
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  disabled={!teachingMode}
+                  className="flex-1 py-3 rounded-xl bg-brand-800 text-white text-sm font-bold hover:bg-brand-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Continue →
+                </button>
+              </div>
             </>
           )}
 
@@ -231,7 +232,7 @@ export default function OnboardingPage() {
           {step === 2 && (
             <>
               <StepHeader
-                current={2}
+                current={3}
                 total={totalSteps}
                 title="How did you hear about us?"
               />
@@ -266,55 +267,8 @@ export default function OnboardingPage() {
             </>
           )}
 
-          {/* ── Step 3: School type — MULTI-SELECT ── */}
+          {/* ── Step 3: Years teaching ── */}
           {step === 3 && (
-            <>
-              <StepHeader
-                current={3}
-                total={totalSteps}
-                title="Where do you teach?"
-                subtitle="Select all that apply"
-              />
-              <div className="flex flex-col gap-2">
-                {SCHOOL_TYPES.map((s) => (
-                  <MultiOption
-                    key={s.value}
-                    selected={schoolTypes.includes(s.value)}
-                    onClick={() => toggleSchoolType(s.value)}
-                    icon={s.icon}
-                    label={s.label}
-                  />
-                ))}
-              </div>
-
-              {schoolTypes.length > 0 && (
-                <p className="text-xs text-brand-600 font-semibold -mt-2">
-                  {schoolTypes.length} selected
-                </p>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="flex-1 py-3 rounded-xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors"
-                >
-                  ← Back
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep(4)}
-                  disabled={schoolTypes.length === 0}
-                  className="flex-1 py-3 rounded-xl bg-brand-800 text-white text-sm font-bold hover:bg-brand-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
-              </div>
-            </>
-          )}
-
-          {/* ── Step 4: Years teaching ── */}
-          {step === 4 && (
             <>
               <StepHeader
                 current={4}
@@ -334,7 +288,7 @@ export default function OnboardingPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(2)}
                   className="flex-1 py-3 rounded-xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors"
                 >
                   ← Back
@@ -366,3 +320,4 @@ export default function OnboardingPage() {
     </div>
   )
 }
+  

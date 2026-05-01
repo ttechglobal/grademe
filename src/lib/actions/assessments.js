@@ -36,10 +36,17 @@ export async function createAssessment(setupData, questions, settings, source = 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) redirect('/login')
 
-  const autoTitle = [
-    setupData.subject?.replace(/_/g, ' '),
-    setupData.assessmentType,
-  ].filter(Boolean).join(' ') || 'Assessment'
+  // Auto-title priority:
+  //   1. topic field (most specific — e.g. "Fractions" → "Fractions Quiz")
+  //   2. subject + assessmentType (e.g. "Mathematics Quiz")
+  //   3. "Assessment" as last resort
+  const topic      = (setupData.topic || setupData.title || '').trim()
+  const subjectStr = setupData.subject?.replace(/_/g, ' ') ?? ''
+  const typeStr    = setupData.assessmentType ?? ''
+
+  const autoTitle = topic
+    ? [topic, typeStr].filter(Boolean).join(' ')
+    : [subjectStr, typeStr].filter(Boolean).join(' ') || 'Assessment'
 
   const slug = generateSlug(setupData.title || autoTitle)
 
@@ -77,6 +84,10 @@ export async function createAssessment(setupData, questions, settings, source = 
   // question_type — 'mcq' | 'true_false' — the type selected on step 0
   if (setupData.questionMode) {
     coreInsert.question_type = setupData.questionMode === 'true_false' ? 'true_false' : 'mcq'
+  }
+  // participant_fields — custom intake fields; null means use platform defaults
+  if (setupData.participant_fields !== undefined && setupData.participant_fields !== null) {
+    coreInsert.participant_fields = setupData.participant_fields
   }
 
   const { data: assessment, error: assessmentError } = await supabase

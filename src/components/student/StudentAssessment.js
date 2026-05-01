@@ -468,27 +468,37 @@ function StartScreen({ assessment, onStart }) {
 
   useEffect(() => { setHistoryCount(loadHistory().length) }, [])
 
-  const canStart = name.trim().length >= 2
-
-  const assessmentTypeLabel = {
-    quiz:       'quiz',
-    test:       'test',
-    assignment: 'assignment',
-  }[assessment.assessment_type ?? 'quiz'] ?? 'assessment'
-
   const greetingCopy = {
     quiz:       `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} quiz! Ready to show what you know?`,
     test:       `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} test. Read each question carefully.`,
     assignment: `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} assignment. Take your time!`,
-  }[assessment.assessment_type ?? 'quiz'] ?? 'Let\'s get started!'
+  }[assessment.assessment_type ?? 'quiz'] ?? "Let's get started!"
+
+  // Resolve participant fields: use assessment.participant_fields if set, else Full Name only
+  const participantFields = (assessment.participant_fields?.length > 0)
+    ? assessment.participant_fields
+    : [{ key: 'full_name', label: 'Full Name', required: true }]
+
+  // Track a value for every field
+  const [fieldValues, setFieldValues] = useState(() =>
+    Object.fromEntries(participantFields.map((f) => [f.key, '']))
+  )
+
+  // name state stays as the canonical full_name (used by downstream logic)
+  const fullNameValue = fieldValues['full_name'] ?? ''
+
+  const canStart = fullNameValue.trim().length >= 2 &&
+    participantFields
+      .filter((f) => f.required && f.key !== 'full_name')
+      .every((f) => (fieldValues[f.key] ?? '').trim().length > 0)
 
   const handleGo = () => {
     if (!canStart) return
-    const trimmed = name.trim()
+    const trimmed = fullNameValue.trim()
     setCommitted(trimmed)
     setPhase('transition')
-    // After 2 seconds advance to the test
-    setTimeout(() => onStart(trimmed), 2000)
+    // Pass all extra fields alongside the name so they're saved with the submission
+    setTimeout(() => onStart(trimmed, fieldValues), 2000)
   }
 
   if (reviewEntry) {
@@ -555,20 +565,41 @@ function StartScreen({ assessment, onStart }) {
 
           {/* Name input */}
           <div className="px-7 py-6 flex flex-col gap-4">
-            <div>
-              <p className="text-sm font-bold text-ink mb-0.5">Enter your full name</p>
-              <p className="text-xs text-ink-4">Your teacher will see your results.</p>
+            {/* Dynamic intake fields — label above input */}
+            <div className="flex flex-col gap-4">
+              <p className="text-xs text-ink-4">
+                {participantFields.length > 1
+                  ? 'Your details will be visible to your teacher.'
+                  : 'Your name will be visible to your teacher.'}
+              </p>
+              {participantFields.map((field, i) => (
+                <div key={field.key} className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor={`field-${field.key}`}
+                    className="text-sm font-semibold text-ink"
+                  >
+                    {field.label}
+                    {field.required && (
+                      <span className="text-danger ml-1" aria-hidden="true">*</span>
+                    )}
+                  </label>
+                  <input
+                    id={`field-${field.key}`}
+                    type="text"
+                    value={fieldValues[field.key] ?? ''}
+                    onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && i === participantFields.length - 1) handleGo()
+                    }}
+                    placeholder={`Enter your ${field.label.toLowerCase()}`}
+                    autoFocus={i === 0}
+                    autoComplete={field.key === 'full_name' ? 'name' : 'off'}
+                    required={field.required}
+                    className="w-full px-4 py-4 bg-surface border-2 border-border rounded-2xl text-base text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all"
+                  />
+                </div>
+              ))}
             </div>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleGo() }}
-              placeholder="e.g. Ayomide Bello"
-              autoComplete="name"
-              autoFocus
-              className="w-full px-4 py-4 bg-surface border-2 border-border rounded-2xl text-base text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all"
-            />
             {assessment.time_limit_mins && (
               <div className="bg-amber-light border border-amber/20 rounded-xl px-4 py-3 text-xs text-amber leading-relaxed flex items-start gap-2">
                 <Clock size={13} className="flex-shrink-0 mt-0.5" />

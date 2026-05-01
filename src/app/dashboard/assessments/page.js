@@ -5,7 +5,7 @@ import { createClient }  from '@/lib/supabase/client'
 import Link              from 'next/link'
 import {
   Plus, ExternalLink, Trash2, Copy, Eye,
-  X, EyeOff, RotateCcw, Clock, Users, AlertCircle, ChevronRight,
+  X, EyeOff, RotateCcw, Clock, Users, AlertCircle, ChevronRight, Filter,
 } from 'lucide-react'
 import { cn }            from '@/lib/utils'
 import { useToast }      from '@/components/ui/ToastProvider'
@@ -367,6 +367,7 @@ export default function AssessmentsPage() {
   const [autoDeactBanner, setAutoDeactBanner] = useState(false)
   const [statusFilter,    setStatusFilter]    = useState('all')
   const [subFilter,       setSubFilter]       = useState('all')
+  const [showFilters,     setShowFilters]     = useState(false)
   const [tutorName,       setTutorName]       = useState('')
 
   // ── Fetch + auto-deactivate ─────────────────────────────────────────────
@@ -508,7 +509,7 @@ export default function AssessmentsPage() {
       {/* ── Filter bar ───────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2 items-center">
-          {/* Status filters */}
+          {/* Status filters — always visible */}
           <span className="text-xs font-semibold text-ink-4 mr-1">Status:</span>
           {[
             { id: 'all',      label: 'All'      },
@@ -529,40 +530,56 @@ export default function AssessmentsPage() {
             </button>
           ))}
 
-          <span className="text-ink-4 mx-1">·</span>
-
-          {/* Activity filters */}
-          <span className="text-xs font-semibold text-ink-4 mr-1">Activity:</span>
-          {[
-            { id: 'all',    label: 'All'           },
-            { id: 'has',    label: 'Has submissions' },
-            { id: 'none',   label: 'No submissions'  },
-            { id: 'recent', label: 'Recent (7d)'     },
-          ].map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setSubFilter(f.id)}
-              className={cn(
-                'px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all',
-                subFilter === f.id
-                  ? 'bg-brand-900 text-white border-brand-900'
-                  : 'bg-white text-ink-3 border-border hover:border-brand-300 hover:text-ink'
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
+          {/* Filter button — toggles Activity filters */}
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className={cn(
+              'ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all',
+              showFilters || subFilter !== 'all'
+                ? 'bg-brand-50 text-brand-700 border-brand-300'
+                : 'bg-white text-ink-3 border-border hover:border-brand-300 hover:text-ink'
+            )}
+          >
+            <Filter size={12} />
+            Filters{subFilter !== 'all' ? ' · 1' : ''}
+          </button>
 
           {/* Clear filters */}
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="ml-1 px-3 py-1.5 rounded-xl text-xs font-semibold text-danger border border-danger/20 bg-danger-light hover:bg-danger hover:text-white transition-all"
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-danger border border-danger/20 bg-danger-light hover:bg-danger hover:text-white transition-all"
             >
-              Clear filters
+              Clear
             </button>
           )}
         </div>
+
+        {/* Activity filters — revealed by Filter button */}
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 items-center bg-surface border border-border rounded-xl px-4 py-3">
+            <span className="text-xs font-semibold text-ink-4 mr-1">Activity:</span>
+            {[
+              { id: 'all',    label: 'All'            },
+              { id: 'has',    label: 'Has submissions' },
+              { id: 'none',   label: 'No submissions'  },
+              { id: 'recent', label: 'Recent (7d)'     },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setSubFilter(f.id)}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all',
+                  subFilter === f.id
+                    ? 'bg-brand-900 text-white border-brand-900'
+                    : 'bg-white text-ink-3 border-border hover:border-brand-300 hover:text-ink'
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Filter result count */}
         {hasActiveFilters && !loading && (

@@ -8,7 +8,7 @@ import Input from '@/components/ui/Input'
 import Avatar from '@/components/ui/Avatar'
 import {
   Settings, LogOut, Save, Lock, Globe,
-  Pencil, X, BookOpen, Plus, Trash2,
+  Pencil, X, BookOpen, Plus, Trash2, Users,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/ToastProvider'
 import { cn } from '@/lib/utils'
@@ -347,14 +347,114 @@ function ClassSelector({ selected, onChange, curriculumClasses }) {
   )
 }
 
+// ── CourseSelector — for University / Lecturer profile ────────────────────
+// Courses are free-form entries with an optional course code.
+// Stored as [{ name, code }] in teaching_courses JSONB column.
+function CourseSelector({ courses, onChange }) {
+  const [name, setName]   = useState('')
+  const [code, setCode]   = useState('')
+
+  const add = () => {
+    const trimName = name.trim()
+    if (!trimName) return
+    const updated = [...(courses ?? []), { name: trimName, code: code.trim() }]
+    onChange(updated)
+    setName('')
+    setCode('')
+  }
+
+  const remove = (idx) => {
+    onChange(courses.filter((_, i) => i !== idx))
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <p className="text-sm font-semibold text-ink-2 mb-0.5">Courses I Teach</p>
+        <p className="text-xs text-ink-4">
+          Add all the courses you teach. These appear when creating assessments.
+        </p>
+      </div>
+
+      {/* Course list */}
+      {(courses ?? []).length > 0 && (
+        <div className="flex flex-col gap-2">
+          {courses.map((c, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 px-4 py-2.5 bg-surface border border-border rounded-xl">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {c.code && (
+                  <span className="text-xs font-bold text-brand-600 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-lg flex-shrink-0">
+                    {c.code}
+                  </span>
+                )}
+                <span className="text-sm text-ink font-medium truncate">{c.name}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="text-ink-4 hover:text-danger transition-colors flex-shrink-0 ml-2"
+                aria-label="Remove course"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(courses ?? []).length === 0 && (
+        <p className="text-xs text-amber">
+          ⚠️ No courses added — add at least one course to filter assessments
+        </p>
+      )}
+
+      {/* Add course form */}
+      <div className="flex flex-col gap-2 p-4 bg-surface border border-border rounded-xl">
+        <p className="text-xs font-semibold text-ink-3 mb-0.5">Add a course</p>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          placeholder="Course name — e.g. Introduction to Biochemistry"
+          className="w-full px-4 py-2.5 text-sm border border-border rounded-xl outline-none focus:border-brand-500 bg-white"
+        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+            placeholder="Course code (optional) — e.g. CSCD 201"
+            className="flex-1 px-4 py-2.5 text-sm border border-border rounded-xl outline-none focus:border-brand-500 bg-white"
+          />
+          <button
+            type="button"
+            onClick={add}
+            disabled={!name.trim()}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-brand-700 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus size={14} />
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+import { USE_CASE_OPTIONS, getUseCaseConfig } from '@/lib/useCaseConfig'
+import UseCaseProfileGrid, { UseCaseProfileBadge } from '@/components/ui/UseCaseProfileGrid'
+
 export default function SettingsPage() {
   const router    = useRouter()
   const { toast } = useToast()
 
   const [user,      setUser]      = useState(null)
   const [profile,   setProfile]   = useState({
-    full_name: '', school: '', role: '', curriculum: 'uk',
-    teaching_subjects: [], teaching_classes: [],
+    full_name: '', school: '', curriculum: 'uk',
+    teaching_subjects: [], teaching_classes: [], teaching_courses: [],
+    use_case_profile: 'k12_tutor',
   })
   const [loading,   setLoading]   = useState(true)
   const [editMode,  setEditMode]  = useState(false)
@@ -363,6 +463,11 @@ export default function SettingsPage() {
   const [pwSaving,  setPwSaving]  = useState(false)
   const [pwError,   setPwError]   = useState('')
   const [pwEdit,    setPwEdit]    = useState(false)
+  // Separate state for editing the use case profile — doesn't affect global profile until saved
+  const [editingProfile,    setEditingProfile]    = useState(false)
+  const [draftProfile,      setDraftProfile]      = useState('')
+  const [editingPrefs,      setEditingPrefs]      = useState(false)
+  const [editingCurriculum, setEditingCurriculum] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -373,7 +478,7 @@ export default function SettingsPage() {
 
       const { data: p } = await supabase
         .from('profiles')
-        .select('full_name, school, role, curriculum, teaching_subjects, teaching_classes')
+        .select('full_name, school, curriculum, teaching_subjects, teaching_classes, teaching_courses, use_case_profile')
         .eq('id', user.id)
         .single()
 
@@ -382,7 +487,11 @@ export default function SettingsPage() {
         ...p,
         teaching_subjects: p.teaching_subjects ?? [],
         teaching_classes:  p.teaching_classes  ?? [],
+        teaching_courses:  p.teaching_courses  ?? [],
+        use_case_profile:  p.use_case_profile  ?? 'k12_tutor',
       }))
+      // Pre-select the current profile in the grid
+      setDraftProfile(p?.use_case_profile ?? 'k12_tutor')
       setLoading(false)
     }
     load()
@@ -398,10 +507,11 @@ export default function SettingsPage() {
       .update({
         full_name:         profile.full_name,
         school:            profile.school,
-        role:              profile.role,
         curriculum:        profile.curriculum,
         teaching_subjects: profile.teaching_subjects,
         teaching_classes:  profile.teaching_classes,
+        teaching_courses:  profile.teaching_courses,
+        use_case_profile:  profile.use_case_profile,
       })
       .eq('id', user.id)
 
@@ -429,6 +539,35 @@ export default function SettingsPage() {
       toast({ message: 'Password updated!', type: 'success' })
     }
     setPwSaving(false)
+  }
+
+  // Saves ONLY the use_case_profile field — nothing else is touched
+  const handleSaveProfile = async () => {
+    if (!draftProfile || draftProfile === profile.use_case_profile) {
+      setEditingProfile(false)
+      return
+    }
+    setSaving(true)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('profiles')
+      .update({ use_case_profile: draftProfile })
+      .eq('id', user.id)
+
+    if (error) {
+      toast({ message: 'Failed to update profile. Please try again.', type: 'error' })
+    } else {
+      // Update local profile state so the page reflects the change immediately
+      setProfile((p) => ({ ...p, use_case_profile: draftProfile }))
+      toast({ message: 'Profile updated successfully.', type: 'success' })
+      setEditingProfile(false)
+    }
+    setSaving(false)
+  }
+
+  const handleCancelProfile = () => {
+    setDraftProfile(profile.use_case_profile)
+    setEditingProfile(false)
   }
 
   const handleSignOut = async () => {
@@ -477,7 +616,6 @@ export default function SettingsPage() {
           <div>
             <InfoRow label="Full Name" value={profile.full_name} />
             <InfoRow label="School"    value={profile.school} />
-            <InfoRow label="Role"      value={profile.role} />
             <InfoRow label="Email"     value={user?.email} />
           </div>
         ) : (
@@ -493,12 +631,6 @@ export default function SettingsPage() {
               value={profile.school ?? ''}
               onChange={(e) => setProfile((p) => ({ ...p, school: e.target.value }))}
               placeholder="e.g. Kings College Lagos"
-            />
-            <Input
-              label="Role / Title"
-              value={profile.role ?? ''}
-              onChange={(e) => setProfile((p) => ({ ...p, role: e.target.value }))}
-              placeholder="e.g. Mathematics Teacher"
             />
             <Input
               label="Email"
@@ -519,120 +651,267 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* ── Teaching Preferences ── */}
-      <div className="bg-white border border-border rounded-2xl p-6 shadow-card flex flex-col gap-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <BookOpen size={16} className="text-brand-500" />
-            <p className="font-display text-base font-bold text-ink">
-              Teaching Preferences
-            </p>
-          </div>
-          {/* Friendly editable note */}
-          <p className="text-sm text-ink-3 mt-1 leading-relaxed">
-            Select the subjects and classes you teach. You can add custom ones at any time — you are not limited to the list below.
-          </p>
-          <div className="mt-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5 text-xs text-brand-700 leading-relaxed">
-            💡 These filter what you see when creating assessments. Missing a subject? Just type it in below.
-          </div>
+      {/* ── Use Case Profile ── */}
+      <div className="bg-white border border-border rounded-2xl p-6 shadow-card flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <Users size={16} className="text-brand-500" />
+          <p className="font-display text-base font-bold text-ink">How I Use GradeMee</p>
         </div>
+        <p className="text-xs text-ink-4 -mt-1 leading-relaxed">
+          This configures labels and features across the platform to match how you work.
+        </p>
 
-        {/* Subject selector */}
-        <SubjectSelector
-          selected={profile.teaching_subjects ?? []}
-          onChange={(subjects) =>
-            setProfile((p) => ({ ...p, teaching_subjects: subjects }))
-          }
+        {/* Always-visible two-card grid — no Edit needed to see options */}
+        <UseCaseProfileGrid
+          selected={draftProfile || profile.use_case_profile}
+          onChange={(val) => {
+            setDraftProfile(val)
+            setEditingProfile(true)
+          }}
         />
 
-        <div className="h-px bg-border" />
-
-        {/* Class selector */}
-        <ClassSelector
-          selected={profile.teaching_classes ?? []}
-          onChange={(classes) =>
-            setProfile((p) => ({ ...p, teaching_classes: classes }))
-          }
-          curriculumClasses={selectedCurriculum.classes}
-        />
-
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          loading={saving}
-          className="self-start"
-        >
-          <Save size={15} />
-          Save Preferences
-        </Button>
+        {/* Warning + save/cancel — only shown when a change is pending */}
+        {editingProfile && draftProfile && draftProfile !== profile.use_case_profile && (
+          <>
+            <div className="bg-amber-light border border-amber/25 rounded-xl px-4 py-3 text-xs text-amber leading-relaxed">
+              Changing your profile updates how GradeMee is set up for new assessments.
+              Your existing assessments and student data are not affected.
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleCancelProfile}
+                className="flex-1 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                disabled={saving}
+                className="flex-1 py-2.5 rounded-xl bg-brand-800 text-white text-sm font-bold hover:bg-brand-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* ── Curriculum ── */}
-      <div className="bg-white border border-border rounded-2xl p-6 shadow-card flex flex-col gap-5">
-        <div className="flex items-center gap-2">
-          <Globe size={16} className="text-brand-500" />
-          <p className="font-display text-base font-bold text-ink">Curriculum</p>
-        </div>
-
-        <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-brand-800">
-              {selectedCurriculum.label}
-            </p>
-            <p className="text-xs text-brand-600 mt-0.5">
-              {selectedCurriculum.description}
-            </p>
+      {/* ── Teaching Preferences ── */}
+      <div className="bg-white border border-border rounded-2xl p-6 shadow-card flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BookOpen size={16} className="text-brand-500" />
+            <p className="font-display text-base font-bold text-ink">Teaching Preferences</p>
           </div>
-          <span className="text-xs text-brand-500 font-semibold">Active</span>
+          {!editingPrefs && (
+            <button
+              type="button"
+              onClick={() => setEditingPrefs(true)}
+              className="text-xs font-bold text-brand-600 hover:text-brand-500 transition-colors px-3 py-1.5 rounded-lg hover:bg-brand-50"
+            >
+              Edit
+            </button>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {CURRICULA.map((c) => (
-            <button
-              key={c.value}
-              onClick={() => setProfile((p) => ({
-                ...p,
-                curriculum:       c.value,
-                teaching_classes: [],
-              }))}
-              className={cn(
-                'text-left p-4 rounded-xl border-2 transition-all',
-                profile.curriculum === c.value
-                  ? 'border-brand-600 bg-brand-50'
-                  : 'border-border bg-white hover:border-brand-200'
+        {/* University — courses view */}
+        {profile.use_case_profile === 'university' ? (
+          !editingPrefs ? (
+            /* Collapsed: show courses as chips */
+            <div className="flex flex-col gap-2">
+              {(profile.teaching_courses ?? []).length === 0 ? (
+                <p className="text-xs text-amber">No courses added yet. Click Edit to add your courses.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {(profile.teaching_courses ?? []).slice(0, 4).map((c, i) => (
+                    <span key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-semibold text-brand-700">
+                      {c.code && <span className="text-brand-400">{c.code}</span>}
+                      {c.name}
+                    </span>
+                  ))}
+                  {(profile.teaching_courses ?? []).length > 4 && (
+                    <span className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs text-ink-4">
+                      +{profile.teaching_courses.length - 4} more
+                    </span>
+                  )}
+                </div>
               )}
-            >
-              <p className="font-semibold text-sm text-ink">{c.label}</p>
-              <p className="text-xs text-ink-4 mt-0.5">{c.description}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {c.classes.slice(0, 3).map((cl) => (
-                  <span
-                    key={cl}
-                    className="text-[10px] bg-surface border border-border rounded px-1.5 py-0.5 text-ink-3"
-                  >
-                    {cl}
+            </div>
+          ) : (
+            /* Expanded: course editor */
+            <div className="flex flex-col gap-4">
+              <CourseSelector
+                courses={profile.teaching_courses ?? []}
+                onChange={(courses) => setProfile((p) => ({ ...p, teaching_courses: courses }))}
+              />
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setEditingPrefs(false)}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors">
+                  Cancel
+                </button>
+                <Button variant="primary" onClick={async () => { await handleSave(); setEditingPrefs(false) }} loading={saving} className="flex-1">
+                  <Save size={15} /> Save
+                </Button>
+              </div>
+            </div>
+          )
+        ) : (
+          /* K-12 / Tutor profile */
+          !editingPrefs ? (
+            /* Collapsed: show selected subjects + classes as chips */
+            <div className="flex flex-col gap-3">
+              <div>
+                <p className="text-xs font-semibold text-ink-4 uppercase tracking-widest mb-2">Subjects</p>
+                {(profile.teaching_subjects ?? []).length === 0 ? (
+                  <p className="text-xs text-amber">No subjects selected — all subjects will show when creating assessments.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {(profile.teaching_subjects ?? []).slice(0, 5).map((s) => (
+                      <span key={s} className="px-3 py-1.5 bg-brand-50 border border-brand-200 rounded-lg text-xs font-semibold text-brand-700">{s}</span>
+                    ))}
+                    {(profile.teaching_subjects ?? []).length > 5 && (
+                      <span className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs text-ink-4">
+                        +{profile.teaching_subjects.length - 5} more
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-ink-4 uppercase tracking-widest mb-2">Classes</p>
+                {(profile.teaching_classes ?? []).length === 0 ? (
+                  <p className="text-xs text-amber">No classes selected — all classes will show when creating assessments.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {(profile.teaching_classes ?? []).slice(0, 5).map((c) => (
+                      <span key={c} className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs font-medium text-ink">{c}</span>
+                    ))}
+                    {(profile.teaching_classes ?? []).length > 5 && (
+                      <span className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs text-ink-4">
+                        +{profile.teaching_classes.length - 5} more
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Expanded: full subject + class selectors */
+            <div className="flex flex-col gap-5">
+              <SubjectSelector
+                selected={profile.teaching_subjects ?? []}
+                onChange={(subjects) => setProfile((p) => ({ ...p, teaching_subjects: subjects }))}
+              />
+              <div className="h-px bg-border" />
+              <ClassSelector
+                selected={profile.teaching_classes ?? []}
+                onChange={(classes) => setProfile((p) => ({ ...p, teaching_classes: classes }))}
+                curriculumClasses={selectedCurriculum.classes}
+              />
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setEditingPrefs(false)}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors">
+                  Cancel
+                </button>
+                <Button variant="primary" onClick={async () => { await handleSave(); setEditingPrefs(false) }} loading={saving} className="flex-1">
+                  <Save size={15} /> Save
+                </Button>
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      {/* ── Curriculum — only shown for K-12 / Tutor profiles ── */}
+      {profile.use_case_profile !== 'university' && (
+        <div className="bg-white border border-border rounded-2xl p-6 shadow-card flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe size={16} className="text-brand-500" />
+              <p className="font-display text-base font-bold text-ink">Curriculum</p>
+            </div>
+            {!editingCurriculum && (
+              <button
+                type="button"
+                onClick={() => setEditingCurriculum(true)}
+                className="text-xs font-bold text-brand-600 hover:text-brand-500 transition-colors px-3 py-1.5 rounded-lg hover:bg-brand-50"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+
+          {!editingCurriculum ? (
+            /* Collapsed: show active curriculum + 1-2 others as dim pills */
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3 px-4 py-3 bg-brand-50 border border-brand-200 rounded-xl">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-brand-800">{selectedCurriculum.label}</p>
+                  <p className="text-xs text-brand-600 mt-0.5">{selectedCurriculum.short}</p>
+                </div>
+                <span className="text-xs font-bold text-brand-500 bg-brand-100 px-2.5 py-1 rounded-full flex-shrink-0">Active</span>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {CURRICULA.filter((c) => c.value !== profile.curriculum).slice(0, 2).map((c) => (
+                  <span key={c.value} className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs text-ink-4 font-medium">
+                    {c.label}
                   </span>
                 ))}
-                {c.classes.length > 3 && (
-                  <span className="text-[10px] text-ink-4 px-1 py-0.5">
-                    +{c.classes.length - 3} more
+                {CURRICULA.filter((c) => c.value !== profile.curriculum).length > 2 && (
+                  <span className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs text-ink-4">
+                    +{CURRICULA.filter((c) => c.value !== profile.curriculum).length - 2} more
                   </span>
                 )}
               </div>
-            </button>
-          ))}
+            </div>
+          ) : (
+            /* Expanded: full curriculum grid */
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {CURRICULA.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setProfile((p) => ({
+                      ...p,
+                      curriculum:       c.value,
+                      teaching_classes: [],
+                    }))}
+                    className={cn(
+                      'text-left p-4 rounded-xl border-2 transition-all',
+                      profile.curriculum === c.value
+                        ? 'border-brand-600 bg-brand-50'
+                        : 'border-border bg-white hover:border-brand-200'
+                    )}
+                  >
+                    <p className="font-semibold text-sm text-ink">{c.label}</p>
+                    <p className="text-xs text-ink-4 mt-0.5">{c.description}</p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {c.classes.slice(0, 3).map((cl) => (
+                        <span key={cl} className="text-[10px] bg-surface border border-border rounded px-1.5 py-0.5 text-ink-3">{cl}</span>
+                      ))}
+                      {c.classes.length > 3 && (
+                        <span className="text-[10px] text-ink-4 px-1 py-0.5">+{c.classes.length - 3} more</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setEditingCurriculum(false)}
+                  className="flex-1 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors">
+                  Cancel
+                </button>
+                <Button variant="primary" onClick={async () => { await handleSave(); setEditingCurriculum(false) }} loading={saving} className="flex-1">
+                  <Save size={15} /> Save
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
-
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          loading={saving}
-          className="self-start"
-        >
-          <Save size={15} />
-          Save Curriculum
-        </Button>
-      </div>
+      )}
 
       {/* ── Password ── */}
       <div className="bg-white border border-border rounded-2xl p-6 shadow-card flex flex-col gap-4">

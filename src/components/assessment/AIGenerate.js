@@ -480,9 +480,6 @@ export default function AIGenerate({ setupData = null, onImport, questionType = 
           </div>
         )}
 
-        {/* Generation method selector — credits teaser */}
-        {FLAGS.CREDITS_COMING_SOON_UI && <GenerationMethodSelector />}
-
         {/* Topic — required */}
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-ink-2">

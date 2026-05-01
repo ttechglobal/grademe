@@ -9,8 +9,9 @@ import { cn } from '@/lib/utils'
 
 const PREVIEW_SESSION_KEY = 'grademee_preview_draft'
 
-export default function StepShare({ data, questions, source = 'manual', onBack, onFinish }) {
+export default function StepShare({ data, questions, source = 'manual', onBack, onFinish, useCaseProfile = 'k12_tutor' }) {
   const { toast } = useToast()
+  const isUniversity = useCaseProfile === 'university'
 
   const [copied,  setCopied]  = useState(false)
   const [saving,  setSaving]  = useState(false)
@@ -118,17 +119,40 @@ export default function StepShare({ data, questions, source = 'manual', onBack, 
           <ExternalLink size={17} className="text-brand-400 group-hover:text-brand-600 flex-shrink-0" />
         </button>
 
-        {/* Summary — no Assessment Settings section */}
+        {/* Summary — context-aware per profile */}
         <div className="bg-surface border border-border rounded-2xl p-5">
           <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">Summary</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            {[
-              { label: 'Subject',    value: data.subject?.replace(/_/g, ' ') || '—' },
-              { label: 'Class',      value: data.classLevel?.toUpperCase()   || '—' },
-              { label: 'Type',       value: data.assessmentType              || '—' },
-              { label: 'Curriculum', value: data.curriculum?.toUpperCase()   || '—' },
-              { label: 'Questions',  value: questions.length                        },
-            ].map((row) => (
+            {(isUniversity ? (
+              // University summary: Course, Type, Questions, Time
+              [
+                {
+                  label: 'Course',
+                  value: data.classLevel
+                    ? data.classLevel.includes('__')
+                      ? data.classLevel.split('__').reverse().join(' — ')  // "Name — CODE"
+                      : data.classLevel
+                    : '—',
+                },
+                { label: 'Type',      value: data.assessmentType || '—' },
+                { label: 'Questions', value: questions.length },
+                {
+                  label: 'Time limit',
+                  value: data.timerEnabled && data.timeLimitMins
+                    ? `${data.timeLimitMins} min${data.timeLimitMins !== 1 ? 's' : ''}`
+                    : 'No limit',
+                },
+              ]
+            ) : (
+              // Tutor summary: Subject, Class, Type, Curriculum, Questions
+              [
+                { label: 'Subject',    value: data.subject?.replace(/_/g, ' ') || '—' },
+                { label: 'Class',      value: data.classLevel?.toUpperCase()   || '—' },
+                { label: 'Type',       value: data.assessmentType              || '—' },
+                { label: 'Curriculum', value: data.curriculum?.toUpperCase()   || '—' },
+                { label: 'Questions',  value: questions.length                        },
+              ]
+            )).map((row) => (
               <div key={row.label} className="flex flex-col gap-0.5">
                 <span className="text-ink-4 text-xs">{row.label}</span>
                 <span className="font-semibold text-ink capitalize">{row.value}</span>

@@ -2,46 +2,84 @@
 
 import { useState } from 'react'
 import Button        from '@/components/ui/Button'
-import QuestionEditor from './QuestionEditor'
-import AIImport       from './AIImport'
-import QuestionPicker from './QuestionPicker'
-import AIGenerate     from './AIGenerate'
-import { PenLine, ImagePlus, BookOpen, Wand2 } from 'lucide-react'
+import QuestionEditor    from './QuestionEditor'
+import AIImport          from './AIImport'
+import QuestionPicker    from './QuestionPicker'
+import AIGenerate        from './AIGenerate'
+import InAppGeneration   from './InAppGeneration'
+import { Sparkles, BookOpen, ImagePlus, Wand2 } from 'lucide-react'
+import { FLAGS } from '@/lib/featureFlags'
 import { cn } from '@/lib/utils'
 
-const MODES = [
+// ── Per-question-type method availability ─────────────────────────────────
+// When Stepwise/Scenario are added, their availableMethods restricts the picker
+// automatically — no UI rebuild needed, just update this config.
+const QUESTION_TYPE_CONFIG = {
+  mcq: {
+    label:            'Multiple Choice',
+    availableMethods: ['inapp', 'generate', 'bank', 'ai'],
+  },
+  true_false: {
+    label:            'True or False',
+    availableMethods: ['inapp', 'generate', 'bank', 'ai'],
+  },
+  stepwise: {
+    label:            'Stepwise',
+    availableMethods: ['inapp'],  // credits only — no copy-paste
+    comingSoon:       true,
+  },
+  scenario: {
+    label:            'Scenario-Based',
+    availableMethods: ['inapp'],  // credits only — no copy-paste
+    comingSoon:       true,
+  },
+}
+
+// ── Method definitions ─────────────────────────────────────────────────────
+const ALL_METHODS = [
   {
-    id:        'manual',
-    emoji:     '✏️',
-    icon:      PenLine,
-    title:     'Type Manually',
-    desc:      'Add questions one by one. Full control over every option, answer, hint, and explanation.',
-    badge:     null,
+    id:          'inapp',
+    icon:        Sparkles,
+    iconBg:      'bg-brand-100',
+    iconColor:   'text-brand-600',
+    title:       'Generate with AI',
+    desc:        'Questions generated instantly inside GradeMee — no copy-pasting needed.',
+    badge:       '1 credit / Q',
+    badgeStyle:  'bg-brand-100 text-brand-700',
+    borderAccent: 'border-l-brand-500',
+    hidden:      !FLAGS.IN_APP_AI,
   },
   {
-    id:        'bank',
-    emoji:     '📚',
-    icon:      BookOpen,
-    title:     'Pick from Question Bank',
-    desc:      'Reuse questions you have already saved. Great for recurring topics.',
-    badge:     'Recommended',
+    id:          'generate',
+    icon:        Wand2,
+    iconBg:      'bg-surface',
+    iconColor:   'text-ink-3',
+    title:       'Generate with AI (Copy & Paste)',
+    desc:        'Copy a prompt → paste into ChatGPT or Gemini → paste the response back here.',
+    badge:       'Free',
+    badgeStyle:  'bg-success-light text-success',
+    borderAccent: 'border-l-success',
   },
   {
-    id:        'ai',
-    emoji:     '📷',
-    icon:      ImagePlus,
-    title:     'AI-Assisted Import',
-    desc:      'Upload a photo or image of a worksheet, textbook page, or handwritten notes — we\'ll read it and generate questions automatically. Perfect if you already have material.',
-    badge:     'Upload worksheet',
-    highlight: true,
+    id:          'bank',
+    icon:        BookOpen,
+    iconBg:      'bg-surface',
+    iconColor:   'text-ink-3',
+    title:       'Pick from Question Bank',
+    desc:        'Choose from questions you have already saved.',
+    badge:       null,
+    borderAccent: 'border-l-ink-4',
   },
   {
-    id:        'generate',
-    emoji:     '✨',
-    icon:      Wand2,
-    title:     'Generate Using AI',
-    desc:      'Describe a topic and let AI build the questions for you from scratch.',
-    badge:     '✨ New',
+    id:          'ai',
+    icon:        ImagePlus,
+    iconBg:      'bg-surface',
+    iconColor:   'text-ink-3',
+    title:       'AI-Assisted Input',
+    desc:        'Upload a worksheet or image — AI extracts the questions for you.',
+    badge:       'Free',
+    badgeStyle:  'bg-success-light text-success',
+    borderAccent: 'border-l-success',
   },
 ]
 
@@ -99,49 +137,52 @@ export default function StepQuestions({
 
   // ── Mode picker — shown when mode is null ──────────────────────────────
   if (!mode) {
+    // Filter methods by what this question type supports
+    const typeConfig   = QUESTION_TYPE_CONFIG[questionType] ?? QUESTION_TYPE_CONFIG.mcq
+    const allowedIds   = typeConfig.availableMethods
+    const visibleMethods = ALL_METHODS.filter(
+      (m) => !m.hidden && allowedIds.includes(m.id)
+    )
+
     return (
       <div className="flex flex-col gap-6">
         <div>
-          <h2 className="font-display text-xl font-bold text-ink mb-1">Add Questions</h2>
-          <p className="text-sm text-ink-3">Choose how you want to add questions to this assessment.</p>
+          <h2 className="font-display text-xl font-bold text-ink mb-1">How would you like to add questions?</h2>
+          <p className="text-sm text-ink-3">Choose a method to get started.</p>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {MODES.map(({ id, emoji, icon: Icon, title, desc, badge, highlight }) => (
+        <div className="flex flex-col gap-4">
+          {visibleMethods.map(({ id, icon: Icon, iconBg, iconColor, title, desc, badge, badgeStyle }) => (
             <button
               key={id}
               type="button"
               onClick={() => selectMode(id)}
               className={cn(
-                'flex items-start gap-4 p-5 rounded-2xl border-2 text-left transition-all',
-                highlight
-                  ? 'border-brand-300 bg-brand-50/40 hover:border-brand-500 hover:bg-brand-50'
-                  : 'border-border bg-white hover:border-brand-300 hover:bg-brand-50/20'
+                'flex items-center gap-4 px-5 py-5 rounded-2xl border-2 bg-white text-left w-full',
+                'border-border hover:border-brand-400 hover:shadow-sm',
+                'transition-all duration-150'
               )}
             >
-              <div className={cn(
-                'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-xl',
-                highlight ? 'bg-brand-100' : 'bg-surface'
-              )}>
-                {emoji}
+              {/* Icon circle */}
+              <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0', iconBg)}>
+                <Icon size={20} className={iconColor} />
               </div>
+
+              {/* Text */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <p className={cn('font-semibold text-sm', highlight ? 'text-brand-800' : 'text-ink')}>
-                    {title}
-                  </p>
-                  {badge && (
-                    <span className={cn(
-                      'text-[10px] font-bold px-2 py-0.5 rounded-full',
-                      highlight ? 'bg-brand-700 text-white' : 'bg-amber-light text-amber'
-                    )}>
-                      {badge}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-ink-3 leading-relaxed">{desc}</p>
+                <p className="text-sm font-bold text-ink leading-snug">{title}</p>
+                <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">{desc}</p>
               </div>
-              <span className="text-ink-4 flex-shrink-0 mt-1">›</span>
+
+              {/* Badge */}
+              {badge && (
+                <span className={cn(
+                  'text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 whitespace-nowrap',
+                  badgeStyle
+                )}>
+                  {badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -205,7 +246,27 @@ export default function StepQuestions({
     )
   }
 
-  // ── AI Generate ────────────────────────────────────────────────────────
+  // ── In-App Generation ───────────────────────────────────────────────────
+  if (mode === 'inapp') {
+    return (
+      <div className="flex flex-col gap-4">
+        <button
+          onClick={() => selectMode(null)}
+          className="self-start flex items-center gap-1.5 text-sm font-semibold text-ink-3 hover:text-ink transition-colors"
+        >
+          ← Back
+        </button>
+        <InAppGeneration
+          setupData={setupData}
+          questionType={questionType}
+          useCase={setupData?.useCaseProfile ?? 'k12_tutor'}
+          onImport={(qs) => { onChange(qs); onNext() }}
+        />
+      </div>
+    )
+  }
+
+  // ── AI Generate (copy-paste) ────────────────────────────────────────────
   if (mode === 'generate') {
     return (
       <div className="flex flex-col gap-6">

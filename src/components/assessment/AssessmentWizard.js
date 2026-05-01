@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import StepQuestionType from './StepQuestionType'
-import StepSetup        from './StepSetup'
-import StepQuestions    from './StepQuestions'
-import StepShare        from './StepShare'
+import { useState, useEffect } from 'react'
+import { useRouter }      from 'next/navigation'
+import { createClient }   from '@/lib/supabase/client'
+import StepQuestionType   from './StepQuestionType'
+import StepSetup          from './StepSetup'
+import StepQuestions      from './StepQuestions'
+import StepShare          from './StepShare'
 import { cn } from '@/lib/utils'
 
 // Steps shown in the progress indicator (steps 1–3 are the existing flow).
@@ -25,17 +26,35 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   const [step, setStep] = useState(0)
 
   // The selected question type — set on step 0, carried through the rest of the flow
-  const [questionType, setQuestionType] = useState(null)
+  const [questionType,   setQuestionType]   = useState(null)
+  const [useCaseProfile, setUseCaseProfile] = useState('k12_tutor')
+
+  // Load use case profile once — needed by StepShare and InAppGeneration
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) return
+      supabase.from('profiles').select('use_case_profile').eq('id', session.user.id).single()
+        .then(({ data }) => {
+          if (data?.use_case_profile) {
+            setUseCaseProfile(data.use_case_profile)
+            // Also store in setupData so StepQuestions can access it
+            setSetupData((prev) => ({ ...prev, useCaseProfile: data.use_case_profile }))
+          }
+        })
+    })
+  }, [])
 
   const [setupData, setSetupData] = useState({
-    subject:        '',
-    classLevel:     '',
-    assessmentType: '',
-    title:          '',
-    questionMode:   'mcq',
-    curriculum:     '',
-    timerEnabled:   false,
-    timeLimitMins:  30,
+    subject:           '',
+    classLevel:        '',
+    assessmentType:    '',
+    title:             '',
+    questionMode:      'mcq',
+    curriculum:        '',
+    timerEnabled:      false,
+    timeLimitMins:     30,
+    participant_fields: null,  // null = use profile defaults; set when user customises
   })
 
   const [questions,      setQuestions]      = useState([])
@@ -129,8 +148,8 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             data={{ ...setupData, questionCount: questions.length }}
             questions={questions}
             source={questionSource}
-            questionType={questionType}             // ← threaded through
-            // Back from share → questions list (mode already preserved in questionMode state)
+            questionType={questionType}
+            useCaseProfile={useCaseProfile}
             onBack={() => setStep(2)}
             onFinish={() => router.push('/dashboard/assessments')}
           />

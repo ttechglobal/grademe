@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import Button  from '@/components/ui/Button'
 import Spinner from '@/components/ui/Spinner'
 import Link    from 'next/link'
-import { BookOpen, Globe, ChevronDown, Clock } from 'lucide-react'
+import { BookOpen, Globe, ChevronDown, Clock, X, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { sortGradeOptions } from '@/lib/sortGrades'
 
@@ -128,10 +128,222 @@ function Toggle({ enabled, onToggle, label }) {
   )
 }
 
+import { getUseCaseConfig } from '@/lib/useCaseConfig'
+
+// ── Default intake fields per profile ─────────────────────────────────────
+const PROFILE_DEFAULT_FIELDS = {
+  k12_tutor:  [{ key: 'full_name', label: 'Full Name', required: true }],
+  university: [
+    { key: 'full_name',     label: 'Full Name',     required: true  },
+    { key: 'matric_number', label: 'Matric Number', required: true  },
+  ],
+  corporate:  [
+    { key: 'full_name',   label: 'Full Name',   required: true  },
+    { key: 'employee_id', label: 'Employee ID', required: false },
+  ],
+  religious:  [{ key: 'full_name', label: 'Full Name', required: true }],
+  vocational: [{ key: 'full_name', label: 'Full Name', required: true }],
+  other:      [{ key: 'full_name', label: 'Full Name', required: true }],
+}
+
+const SUGGESTED_EXTRA_FIELDS = {
+  k12_tutor:  [{ key: 'class_arm',  label: 'Class Arm'  }, { key: 'student_id', label: 'Student ID' }],
+  university: [{ key: 'department', label: 'Department' }, { key: 'course_code', label: 'Course Code' }],
+  corporate:  [{ key: 'department', label: 'Department' }, { key: 'team',        label: 'Team'        }],
+  religious:  [{ key: 'cell_group', label: 'Cell Group' }, { key: 'cohort',      label: 'Cohort'      }],
+  vocational: [{ key: 'batch',      label: 'Batch'      }, { key: 'skill_track', label: 'Skill Track' }],
+  other:      [{ key: 'group',      label: 'Group'      }],
+}
+
+function getDefaultFields(useCaseProfile) {
+  return PROFILE_DEFAULT_FIELDS[useCaseProfile] ?? PROFILE_DEFAULT_FIELDS.k12_tutor
+}
+
+// ── Participant intake fields editor ──────────────────────────────────────
+function ParticipantFieldsEditor({ fields, useCaseProfile, onChange }) {
+  const [expanded, setExpanded]   = useState(false)
+  const [newLabel, setNewLabel]   = useState('')
+  const [required, setRequired]   = useState(true)   // required by default
+
+  // Resolve: if null, use profile defaults (not yet customised)
+  const defaults     = getDefaultFields(useCaseProfile)
+  const active       = fields ?? defaults
+  const isCustomised = fields !== null
+
+  const suggestions = (SUGGESTED_EXTRA_FIELDS[useCaseProfile] ?? [])
+    .filter((s) => !active.some((f) => f.key === s.key))
+
+  const addSuggested = (s) => {
+    onChange([...active, { key: s.key, label: s.label, required: true }])  // required by default
+  }
+
+  const addCustom = () => {
+    const trimmed = newLabel.trim()
+    if (!trimmed) return
+    const key = trimmed.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    if (active.some((f) => f.key === key)) return
+    onChange([...active, { key, label: trimmed, required }])
+    setNewLabel('')
+    setRequired(true)   // reset to required for next field
+  }
+
+  const remove = (key) => {
+    if (key === 'full_name') return  // Full Name is always required
+    onChange(active.filter((f) => f.key !== key))
+  }
+
+  const resetToDefaults = () => onChange(null)
+
+  return (
+    <div className="bg-white border border-border rounded-2xl overflow-hidden">
+      {/* Header — always visible */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-brand-50 flex items-center justify-center flex-shrink-0">
+            <span className="text-brand-600 text-sm font-bold">?</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-ink">
+              What to collect from participants
+            </p>
+            <p className="text-xs text-ink-4 mt-0.5">
+              {active.map((f) => f.label).join(', ')}
+              {isCustomised && <span className="ml-1.5 text-brand-500 font-semibold">• Custom</span>}
+            </p>
+          </div>
+        </div>
+        <ChevronDown
+          size={16}
+          className={cn('text-ink-4 transition-transform flex-shrink-0', expanded && 'rotate-180')}
+        />
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-5 border-t border-border flex flex-col gap-4 pt-4">
+
+          {/* Current fields list */}
+          <div className="flex flex-col gap-2">
+            {active.map((f) => (
+              <div key={f.key} className="flex items-center justify-between gap-2 px-4 py-2.5 bg-surface border border-border rounded-xl">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium text-ink truncate">{f.label}</span>
+                  {f.required && (
+                    <span className="text-[10px] font-bold text-danger bg-danger-light px-1.5 py-0.5 rounded flex-shrink-0">Required</span>
+                  )}
+                </div>
+                {f.key !== 'full_name' && (
+                  <button
+                    type="button"
+                    onClick={() => remove(f.key)}
+                    className="text-ink-4 hover:text-danger transition-colors flex-shrink-0"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+                {f.key === 'full_name' && (
+                  <span className="text-[10px] text-ink-4 flex-shrink-0">Always on</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Suggested fields — one-tap add */}
+          {suggestions.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-ink-4 uppercase tracking-widest">Suggested</p>
+              <div className="flex flex-wrap gap-2">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => addSuggested(s)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-border rounded-xl text-xs font-semibold text-ink hover:border-brand-400 hover:bg-brand-50 transition-colors"
+                  >
+                    <Plus size={11} />
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Custom field add */}
+          {active.length < 5 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-ink-4 uppercase tracking-widest">Add custom field</p>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
+                  placeholder="Field label — e.g. Registration Number"
+                  className="flex-1 px-3 py-2 text-sm border border-border rounded-xl outline-none focus:border-brand-500 bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => setRequired((v) => !v)}
+                  className={cn(
+                    'px-3 py-2 rounded-xl text-xs font-bold border-2 transition-colors flex-shrink-0',
+                    required
+                      ? 'border-danger bg-danger-light text-danger'
+                      : 'border-border text-ink-4 hover:border-brand-300'
+                  )}
+                >
+                  {required ? 'Required' : 'Optional'}
+                </button>
+                <button
+                  type="button"
+                  onClick={addCustom}
+                  disabled={!newLabel.trim()}
+                  className="px-3 py-2 bg-brand-800 text-white text-xs font-bold rounded-xl hover:bg-brand-700 disabled:opacity-40 transition-colors flex-shrink-0"
+                >
+                  Add
+                </button>
+              </div>
+              <p className="text-[11px] text-ink-4">
+                Fields are required by default — tap "Required" to make one optional.
+              </p>
+            </div>
+          )}
+
+          {/* Reset link */}
+          {isCustomised && (
+            <button
+              type="button"
+              onClick={resetToDefaults}
+              className="text-xs text-ink-4 hover:text-brand-500 transition-colors self-start"
+            >
+              Reset to defaults
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Participant Fields Editor ───────────────────────────────────────────────
+// Shown in Step 1 of assessment creation so tutors/lecturers can see
+// and customise what they collect from participants — right in the flow.
+// Full Name is always first and locked. Everything else is editable.
+const SUGGESTED_FIELDS = {
+  k12_tutor:  [{ key: 'class_arm',     label: 'Class Arm',     required: false }],
+  university: [{ key: 'matric_number', label: 'Matric Number', required: true  },
+               { key: 'department',    label: 'Department',    required: false }],
+  other:      [{ key: 'id_number',     label: 'ID Number',     required: false }],
+}
+
+
 // ── Main component ─────────────────────────────────────────────────────────
 export default function StepSetup({ data, onChange, onNext, onBack, accountCurriculum = 'uk', questionType }) {
-  const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [profile,       setProfile]       = useState(null)
+  const [loading,       setLoading]       = useState(true)
+  const [useCaseProfile, setUseCaseProfile] = useState('k12_tutor')
 
   useEffect(() => {
     async function load() {
@@ -141,11 +353,20 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
 
       const { data: p } = await supabase
         .from('profiles')
-        .select('teaching_subjects, teaching_classes, curriculum')
+        .select('teaching_subjects, teaching_classes, teaching_courses, curriculum, use_case_profile')
         .eq('id', session.user.id)
         .single()
 
       setProfile(p)
+
+      const resolvedProfile = p?.use_case_profile ?? 'k12_tutor'
+      setUseCaseProfile(resolvedProfile)
+
+      // When switching to university — clear any stale subject/class from a previous tutor session
+      if (resolvedProfile === 'university') {
+        if (data.subject)    onChange('subject', '')
+        if (data.classLevel) onChange('classLevel', '')
+      }
 
       // Default per-assessment curriculum to account curriculum (on first load only)
       if (p?.curriculum && !data.curriculum) {
@@ -157,11 +378,14 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const ucConfig = getUseCaseConfig(useCaseProfile)
+  const isUniversity = useCaseProfile === 'university'
+
   const accountCurr      = profile?.curriculum ?? accountCurriculum
   const activeCurriculum = data.curriculum || accountCurr
   const currDef          = CURRICULUM_MAP[activeCurriculum] ?? CURRICULUM_MAP.uk
 
-  // Subject options
+  // Subject options — only used for non-university profiles
   const teachingSubjects = profile?.teaching_subjects ?? []
   const subjectList      = teachingSubjects.length > 0 ? teachingSubjects : ALL_SUBJECTS
   const subjectOptions   = subjectList.map((s) => ({
@@ -169,7 +393,7 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
     label: s,
   }))
 
-  // Class options — derived from selected curriculum
+  // Class options — only used for non-university profiles
   const teachingClasses = profile?.teaching_classes ?? []
   const classList       = teachingClasses.length > 0 ? teachingClasses : currDef.classes
   const classOptions    = sortGradeOptions(classList.map((c) => ({
@@ -177,13 +401,22 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
     label: c,
   })))
 
-  // Curriculum options
+  // Course options — university only. teaching_courses is [{name, code}]
+  const teachingCourses = profile?.teaching_courses ?? []
+  const courseOptions   = teachingCourses.map((c) => ({
+    value: c.code ? `${c.code}__${c.name}` : c.name,
+    label: c.code ? `${c.code} — ${c.name}` : c.name,
+  }))
+
   const curriculumOptions = CURRICULA.map((c) => ({
     value: c.value,
     label: c.value === accountCurr ? `${c.label} (account default)` : c.label,
   }))
 
-  const isValid = data.subject && data.classLevel && data.assessmentType
+  // isValid — different required fields per profile
+  const isValid = isUniversity
+    ? (data.classLevel && data.assessmentType)           // course (stored in classLevel) + type
+    : (data.subject && data.classLevel && data.assessmentType)  // subject + class + type
 
   if (loading) {
     return (
@@ -205,65 +438,122 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
         <p className="text-sm text-ink-3">Set up your assessment before adding questions.</p>
       </div>
 
-      {/* Curriculum selector */}
-      <CustomSelect
-        label={
-          <span className="flex items-center gap-1.5">
-            <Globe size={13} className="text-brand-500" />
-            Curriculum
-          </span>
-        }
-        value={activeCurriculum}
-        onChange={(e) => {
-          onChange('curriculum', e.target.value)
-          onChange('classLevel', '')  // reset class when curriculum changes
-        }}
-        options={curriculumOptions}
-        hint={
-          <>
-            Defaults to your account curriculum.{' '}
-            {activeCurriculum !== accountCurr && (
-              <button
-                type="button"
-                onClick={() => { onChange('curriculum', accountCurr); onChange('classLevel', '') }}
-                className="text-brand-500 font-semibold hover:text-brand-400 underline underline-offset-2"
-              >
-                Reset to default
-              </button>
-            )}
-          </>
-        }
-      />
+      {/* ── UNIVERSITY FLOW ─────────────────────────────────────────────
+          Only shows: Course → Assessment Type → Title (opt) → Timer
+          No subject, no class/grade dropdown, no curriculum.
+      ─────────────────────────────────────────────────────────────────── */}
+      {isUniversity ? (
+        <>
+          {/* Course — primary academic unit for university */}
+          {courseOptions.length > 0 ? (
+            <CustomSelect
+              label="Course"
+              value={data.classLevel}
+              onChange={(e) => onChange('classLevel', e.target.value)}
+              options={courseOptions}
+              placeholder="Select a course…"
+              hint={
+                <Link href="/dashboard/settings" className="text-brand-500 font-semibold hover:text-brand-400">
+                  Manage courses in Settings →
+                </Link>
+              }
+            />
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-ink-2">Course</label>
+              <div className="bg-amber-light border border-amber/25 rounded-xl px-4 py-3.5 flex items-start gap-3">
+                <span className="text-amber text-base flex-shrink-0">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber">No courses added yet</p>
+                  <p className="text-xs text-amber/80 mt-0.5">
+                    Add your courses in Settings before creating assessments.{' '}
+                    <Link href="/dashboard/settings" className="font-bold underline underline-offset-2 hover:text-amber">
+                      Go to Settings →
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        /* ── TUTOR / K-12 FLOW ──────────────────────────────────────────
+           Curriculum (if applicable) → Subject → Class/Grade
+        ─────────────────────────────────────────────────────────────────── */
+        <>
+          {ucConfig.showCurriculum && (
+            <CustomSelect
+              label={
+                <span className="flex items-center gap-1.5">
+                  <Globe size={13} className="text-brand-500" />
+                  Curriculum
+                </span>
+              }
+              value={activeCurriculum}
+              onChange={(e) => {
+                onChange('curriculum', e.target.value)
+                onChange('classLevel', '')
+              }}
+              options={curriculumOptions}
+              hint={
+                <>
+                  Defaults to your account curriculum.{' '}
+                  {activeCurriculum !== accountCurr && (
+                    <button
+                      type="button"
+                      onClick={() => { onChange('curriculum', accountCurr); onChange('classLevel', '') }}
+                      className="text-brand-500 font-semibold hover:text-brand-400 underline underline-offset-2"
+                    >
+                      Reset to default
+                    </button>
+                  )}
+                </>
+              }
+            />
+          )}
 
-      {/* Subject */}
-      <CustomSelect
-        label="Subject"
-        value={data.subject}
-        onChange={(e) => onChange('subject', e.target.value)}
-        options={subjectOptions}
-        placeholder="Select a subject…"
-        hint={
-          !data.subject && (
-            <>
-              Can't find your subject?{' '}
-              <Link href="/dashboard/settings" className="text-brand-500 font-semibold hover:text-brand-400">
-                Edit your preferences →
-              </Link>
-            </>
-          )
-        }
-      />
+          <CustomSelect
+            label="Subject"
+            value={data.subject}
+            onChange={(e) => onChange('subject', e.target.value)}
+            options={subjectOptions}
+            placeholder="Select a subject…"
+            hint={
+              !data.subject && (
+                <>
+                  Can't find your subject?{' '}
+                  <Link href="/dashboard/settings" className="text-brand-500 font-semibold hover:text-brand-400">
+                    Edit your preferences →
+                  </Link>
+                </>
+              )
+            }
+          />
 
-      {/* Class / Grade */}
-      <CustomSelect
-        label="Class / Grade"
-        value={data.classLevel}
-        onChange={(e) => onChange('classLevel', e.target.value)}
-        options={classOptions}
-        placeholder="Select a class…"
-      />
+          {ucConfig.showGradeLevel ? (
+            <CustomSelect
+              label={ucConfig.classLabel}
+              value={data.classLevel}
+              onChange={(e) => onChange('classLevel', e.target.value)}
+              options={classOptions}
+              placeholder="Select a class…"
+            />
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-ink-2">{ucConfig.classLabel}</label>
+              <input
+                type="text"
+                value={data.classLevel ?? ''}
+                onChange={(e) => onChange('classLevel', e.target.value)}
+                placeholder={`e.g. ${ucConfig.classLabel} name`}
+                className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-300 transition-all"
+              />
+            </div>
+          )}
+        </>
+      )}
 
-      {/* Assessment title (optional — plain input, no custom select needed) */}
+      {/* Assessment title — optional for both profiles */}
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-semibold text-ink-2">
           Assessment Title <span className="text-ink-4 font-normal">(optional)</span>
@@ -275,10 +565,12 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
           placeholder="Auto-generated if left blank"
           className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-300 transition-all"
         />
-        <p className="text-xs text-ink-4 px-0.5">e.g. Mid-term Test — Algebra</p>
+        <p className="text-xs text-ink-4 px-0.5">
+          {isUniversity ? 'e.g. CSCD 201 — Mid-Semester Test' : 'e.g. Mid-term Test — Algebra'}
+        </p>
       </div>
 
-      {/* Assessment type */}
+      {/* Assessment type — same for both profiles */}
       <div className="flex flex-col gap-3">
         <label className="text-sm font-semibold text-ink-2">
           Assessment Type <span className="text-danger">*</span>
@@ -306,10 +598,18 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
         </div>
       </div>
 
-      {/* ── Timer ─────────────────────────────────────────────────────── */}
-      <div className="bg-white border border-border rounded-2xl px-5 py-4 flex flex-col gap-4">
+      {/* ── Participant intake fields ──────────────────────────────────
+          Shown as a collapsed summary by default — expand to customise.
+          Defaults are set from the use case profile when null.
+      ─────────────────────────────────────────────────────────────────── */}
+      <ParticipantFieldsEditor
+        fields={data.participant_fields}
+        useCaseProfile={useCaseProfile}
+        onChange={(fields) => onChange('participant_fields', fields)}
+      />
 
-        {/* Toggle row */}
+      {/* Timer — same for both profiles */}
+      <div className="bg-white border border-border rounded-2xl px-5 py-4 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Clock size={16} className={cn('flex-shrink-0', data.timerEnabled ? 'text-success' : 'text-ink-4')} />
@@ -322,7 +622,6 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
               </p>
             </div>
           </div>
-
           <Toggle
             enabled={!!data.timerEnabled}
             onToggle={() => {
@@ -333,8 +632,6 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
             label={data.timerEnabled ? 'On' : 'Off'}
           />
         </div>
-
-        {/* Duration selector — only when ON */}
         {data.timerEnabled && (
           <div className="border-t border-border pt-4">
             <CustomSelect
@@ -350,9 +647,7 @@ export default function StepSetup({ data, onChange, onNext, onBack, accountCurri
 
       <div className="flex items-center justify-between pt-2">
         {onBack ? (
-          <Button variant="secondary" onClick={onBack}>
-            ← Back
-          </Button>
+          <Button variant="secondary" onClick={onBack}>← Back</Button>
         ) : (
           <div />
         )}

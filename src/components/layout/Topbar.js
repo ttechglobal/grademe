@@ -5,6 +5,7 @@ import { createClient }        from '@/lib/supabase/client'
 import { useRouter }           from 'next/navigation'
 import MobileDrawer            from '@/components/layout/MobileDrawer'
 import Avatar                  from '@/components/ui/Avatar'
+import CreditsDisplay          from '@/components/ui/CreditsDisplay'
 import { LogOut, Settings }    from 'lucide-react'
 import Link                    from 'next/link'
 
@@ -43,8 +44,11 @@ export default function Topbar() {
         </div>
       </div>
 
-      {/* Right: user avatar + dropdown */}
-      <div className="relative">
+      {/* Right: credits + user avatar */}
+      <div className="flex items-center gap-2">
+        <CreditsDisplay />
+
+        <div className="relative">
         <button
           onClick={() => setOpen(!open)}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -82,6 +86,7 @@ export default function Topbar() {
             </div>
           </>
         )}
+      </div>
       </div>
     </header>
   )

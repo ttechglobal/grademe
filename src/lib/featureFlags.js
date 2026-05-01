@@ -24,7 +24,7 @@ export const FLAGS = {
   TRUE_FALSE_QUESTIONS:  true,    // True/False question type
   SHORT_ANSWER:          false,   // Short answer question type
   STEPWISE_QUESTIONS:    false,   // Stepwise worked-solution questions
-  IN_APP_AI:             false,   // Direct AI generation (no copy-paste)
+  IN_APP_AI:             true,    // In-app AI generation (uses credits)
   CREDITS_COMING_SOON_UI: true,  // Credits teaser UI (sidebar, banner, method selector)
   SCHOOL_ACCOUNTS:       false,   // Multi-tutor school plans
   PAYMENTS:              false,   // Subscription billing

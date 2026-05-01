@@ -9,37 +9,40 @@ import {
   HelpCircle, Users2, ChevronRight, Zap,
 } from 'lucide-react'
 import { FLAGS } from '@/lib/featureFlags'
+import { useUseCaseProfile } from '@/hooks/useUseCaseProfile'
 
-// ── Single canonical nav definition ───────────────────────────────────────
-// This is THE source of truth. MobileDrawer imports NAV_GROUPS from here
-// so desktop and mobile are always in sync.
-export const NAV_GROUPS = [
-  {
-    section: 'Overview',
-    links: [
-      { label: 'Dashboard',        href: '/dashboard',             icon: LayoutDashboard },
-      { label: 'Assessments',      href: '/dashboard/assessments', icon: ClipboardList   },
-      { label: 'Students',         href: '/dashboard/students',    icon: Users           },
-    ],
-  },
-  {
-    section: 'Tools',
-    links: [
-      { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen  },
-      { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles  },
-      // Credits item injected below if flag is on
-      ...(FLAGS.CREDITS_COMING_SOON_UI ? [
-        { label: 'Credits', href: '/dashboard/credits', icon: Zap, badge: 'Soon' },
-      ] : []),
-    ],
-  },
-  {
-    section: 'Account',
-    links: [
-      { label: 'Settings',         href: '/dashboard/settings',    icon: Settings  },
-    ],
-  },
-]
+// Build nav groups dynamically — participantsLabel changes per use case profile
+export function buildNavGroups(participantsLabel = 'Students') {
+  return [
+    {
+      section: 'Overview',
+      links: [
+        { label: 'Dashboard',           href: '/dashboard',             icon: LayoutDashboard },
+        { label: 'Assessments',         href: '/dashboard/assessments', icon: ClipboardList   },
+        { label: participantsLabel,     href: '/dashboard/students',    icon: Users           },
+      ],
+    },
+    {
+      section: 'Tools',
+      links: [
+        { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen  },
+        { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles  },
+        ...(FLAGS.CREDITS_COMING_SOON_UI ? [
+          { label: 'Credits', href: '/dashboard/credits', icon: Zap, badge: 'Soon' },
+        ] : []),
+      ],
+    },
+    {
+      section: 'Account',
+      links: [
+        { label: 'Settings',         href: '/dashboard/settings',    icon: Settings  },
+      ],
+    },
+  ]
+}
+
+// Keep backward-compatible export for MobileDrawer
+export const NAV_GROUPS = buildNavGroups('Students')
 
 /**
  * Longest-prefix-wins active link resolution.
@@ -61,13 +64,14 @@ export function resolveActive(pathname) {
 
 // ── NavLinks ───────────────────────────────────────────────────────────────
 // Reusable nav link renderer used by both Sidebar and MobileDrawer
-export function NavLinks({ onNavigate }) {
-  const pathname = usePathname()
+export function NavLinks({ onNavigate, groups }) {
+  const pathname  = usePathname()
+  const navGroups = groups ?? NAV_GROUPS
   const active   = resolveActive(pathname)
 
   return (
     <>
-      {NAV_GROUPS.map((group) => (
+      {navGroups.map((group) => (
         <div key={group.section} className="mb-5">
           <p className="px-6 pb-1 text-[10px] font-bold uppercase tracking-widest text-white/25">
             {group.section}
@@ -145,6 +149,9 @@ function SidebarBottom() {
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 export default function Sidebar() {
+  const { config } = useUseCaseProfile()
+  const navGroups  = buildNavGroups(config.participantsLabel)
+
   return (
     <aside className="w-[220px] min-h-screen bg-brand-900 flex flex-col flex-shrink-0 hidden md:flex">
 
@@ -154,14 +161,14 @@ export default function Sidebar() {
           <span className="text-white">Grade</span>
           <span className="text-amber">Mee</span>
         </div>
-        <p className="text-[11px] font-medium tracking-[0.06em] text-white/30 mt-1 select-none">
+        <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-white/30 mt-1 select-none">
           Empowering Learning
         </p>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 py-5 overflow-y-auto">
-        <NavLinks />
+        <NavLinks groups={navGroups} />
       </nav>
 
       <SidebarBottom />

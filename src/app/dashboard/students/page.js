@@ -6,6 +6,7 @@ import {
   AlertTriangle, Users, Send, BarChart2, Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useUseCaseProfile } from '@/hooks/useUseCaseProfile'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function relTime(dateStr) {
@@ -131,6 +132,7 @@ function StudentDetail({ student, onBack }) {
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function StudentsPage() {
   const [students,    setStudents]    = useState([])
+  const { config } = useUseCaseProfile()
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
   const [search,      setSearch]      = useState('')
@@ -191,7 +193,7 @@ export default function StudentsPage() {
 
       {/* Header */}
       <div>
-        <h1 className="font-display text-2xl font-bold text-ink">Students</h1>
+        <h1 className="font-display text-2xl font-bold text-ink">{config.participantsLabel}</h1>
         <p className="text-sm text-ink-3 mt-1">
           Profiles built automatically from assessment submissions.
         </p>

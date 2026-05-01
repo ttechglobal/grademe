@@ -425,6 +425,43 @@ export default function SuperAdminClient({ adminEmail, adminName }) {
                 <strong>{totals.creditsInterest}</strong> tutor{totals.creditsInterest !== 1 ? 's' : ''} interested in credits
               </div>
             )}
+
+            {/* Use case profile breakdown */}
+            {totals.useCaseCounts && Object.keys(totals.useCaseCounts).length > 0 && (
+              <div className="mt-4 bg-white border border-border rounded-2xl p-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
+                  User Breakdown by Use Case
+                </p>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { key: 'k12_tutor',  icon: '🎓', label: 'Teachers / Tutors'           },
+                    { key: 'university', icon: '🏛️', label: 'University Lecturers'         },
+                    { key: 'corporate',  icon: '🏢', label: 'Corporate / HR'               },
+                    { key: 'religious',  icon: '✝️', label: 'Religious Education'          },
+                    { key: 'vocational', icon: '🔧', label: 'Vocational Training'          },
+                    { key: 'other',      icon: '➕', label: 'Other'                        },
+                  ].map(({ key, icon, label }) => {
+                    const count = totals.useCaseCounts[key] ?? 0
+                    const pct   = totals.tutors > 0 ? Math.round((count / totals.tutors) * 100) : 0
+                    if (count === 0) return null
+                    return (
+                      <div key={key} className="flex items-center gap-3">
+                        <span className="text-base w-6 flex-shrink-0">{icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-sm font-medium text-ink">{label}</span>
+                            <span className="text-sm font-bold text-ink">{count} <span className="text-ink-4 font-normal text-xs">({pct}%)</span></span>
+                          </div>
+                          <div className="h-1.5 bg-border rounded-full overflow-hidden">
+                            <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Period */}

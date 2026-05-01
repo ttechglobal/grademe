@@ -5,6 +5,8 @@ import Link                    from 'next/link'
 import { usePathname }         from 'next/navigation'
 import { Menu, X, Users2, HelpCircle, ChevronRight } from 'lucide-react'
 import { NavLinks }            from '@/components/layout/Sidebar'
+import { useUseCaseProfile }  from '@/hooks/useUseCaseProfile'
+import { buildNavGroups }     from '@/components/layout/Sidebar'
 import { cn }                  from '@/lib/utils'
 
 /**
@@ -21,6 +23,8 @@ import { cn }                  from '@/lib/utils'
 export default function MobileDrawer() {
   const [open,    setOpen]    = useState(false)
   const pathname              = usePathname()
+  const { config }            = useUseCaseProfile()
+  const navGroups             = buildNavGroups(config.participantsLabel)
 
   // Close drawer on route change
   useEffect(() => { setOpen(false) }, [pathname])
@@ -65,7 +69,7 @@ export default function MobileDrawer() {
               <span className="text-white">Grade</span>
               <span className="text-amber">Mee</span>
             </div>
-            <p className="text-[11px] font-medium tracking-[0.06em] text-white/30 mt-1 select-none">
+            <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-white/30 mt-1 select-none">
               Empowering Learning
             </p>
           </div>
@@ -80,7 +84,7 @@ export default function MobileDrawer() {
 
         {/* Nav — imported from Sidebar, identical to desktop */}
         <nav className="flex-1 py-5 overflow-y-auto">
-          <NavLinks onNavigate={() => setOpen(false)} />
+          <NavLinks groups={navGroups} onNavigate={() => setOpen(false)} />
         </nav>
 
         {/* Community */}
