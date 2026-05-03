@@ -12,8 +12,6 @@ import { FLAGS } from '@/lib/featureFlags'
 import { cn } from '@/lib/utils'
 
 // ── Per-question-type method availability ─────────────────────────────────
-// When Stepwise/Scenario are added, their availableMethods restricts the picker
-// automatically — no UI rebuild needed, just update this config.
 const QUESTION_TYPE_CONFIG = {
   mcq: {
     label:            'Multiple Choice',
@@ -23,14 +21,20 @@ const QUESTION_TYPE_CONFIG = {
     label:            'True or False',
     availableMethods: ['inapp', 'generate', 'bank', 'ai'],
   },
+  calculation: {
+    label:            'Fill in the Answer',
+    availableMethods: ['inapp', 'generate'],
+    // bank excluded — question bank stores MCQ/TF only
+    // ai excluded — image extraction can't produce answer_template structures
+  },
   stepwise: {
     label:            'Stepwise',
-    availableMethods: ['inapp'],  // credits only — no copy-paste
+    availableMethods: ['inapp'],
     comingSoon:       true,
   },
   scenario: {
     label:            'Scenario-Based',
-    availableMethods: ['inapp'],  // credits only — no copy-paste
+    availableMethods: ['inapp'],
     comingSoon:       true,
   },
 }
@@ -90,10 +94,7 @@ export default function StepQuestions({
   setupData,
   onNext,
   onBack,
-  // Restored from AssessmentWizard so Back from Step 3 returns to the question list.
-  // When null, tutor sees the mode-picker. When set, they see that mode's editor.
   initialMode = null,
-  // The question type selected on Step 0 — threaded through to all sub-components
   questionType = 'mcq',
 }) {
   const [mode,        setMode]        = useState(initialMode)
@@ -135,11 +136,10 @@ export default function StepQuestions({
     onNext()
   }
 
-  // ── Mode picker — shown when mode is null ──────────────────────────────
+  // ── Mode picker ────────────────────────────────────────────────────────
   if (!mode) {
-    // Filter methods by what this question type supports
-    const typeConfig   = QUESTION_TYPE_CONFIG[questionType] ?? QUESTION_TYPE_CONFIG.mcq
-    const allowedIds   = typeConfig.availableMethods
+    const typeConfig     = QUESTION_TYPE_CONFIG[questionType] ?? QUESTION_TYPE_CONFIG.mcq
+    const allowedIds     = typeConfig.availableMethods
     const visibleMethods = ALL_METHODS.filter(
       (m) => !m.hidden && allowedIds.includes(m.id)
     )
@@ -163,18 +163,13 @@ export default function StepQuestions({
                 'transition-all duration-150'
               )}
             >
-              {/* Icon circle */}
               <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0', iconBg)}>
                 <Icon size={20} className={iconColor} />
               </div>
-
-              {/* Text */}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-ink leading-snug">{title}</p>
                 <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">{desc}</p>
               </div>
-
-              {/* Badge */}
               {badge && (
                 <span className={cn(
                   'text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 whitespace-nowrap',
@@ -187,7 +182,6 @@ export default function StepQuestions({
           ))}
         </div>
 
-        {/* Show existing questions if any (e.g. after returning from preview) */}
         {questions.length > 0 && (
           <div className="flex items-center justify-between pt-2 border-t border-border">
             <p className="text-sm text-ink-3">
@@ -311,7 +305,7 @@ export default function StepQuestions({
 
       {mode === 'manual'
         ? <QuestionEditor questions={questions} onChange={onChange} questionType={questionType} />
-        : <AIImport onImport={handleImport} />
+        : <AIImport onImport={handleImport} questionType={questionType} />
       }
 
       <div className="flex items-center justify-between pt-2 border-t border-border">

@@ -2,7 +2,7 @@ export default function AuthLayout({ children }) {
   return (
     <div className="min-h-screen bg-surface flex">
 
-      {/* Left panel — branding */}
+      {/* Left panel — branding (desktop only) */}
       <div className="hidden lg:flex lg:w-1/2 bg-brand-900 flex-col justify-between p-12 relative overflow-hidden">
 
         {/* Decorative circles */}
@@ -13,7 +13,7 @@ export default function AuthLayout({ children }) {
         {/* Logo */}
         <div className="relative z-10">
           <span className="font-display text-3xl font-bold text-white">
-            Grade<span className="text-amber">Me</span>
+            Grade<span className="text-amber">Mee</span>
           </span>
           <p className="text-white/40 text-sm mt-1">Assessment Platform</p>
         </div>
@@ -52,24 +52,19 @@ export default function AuthLayout({ children }) {
         {/* Footer */}
         <div className="relative z-10">
           <p className="text-white/20 text-xs">
-            © {new Date().getFullYear()} GradeMe. Built for teachers everywhere.
+            © {new Date().getFullYear()} GradeMee. Built for teachers everywhere.
           </p>
         </div>
       </div>
 
       {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-md">
-
-          {/* Mobile logo */}
-          <div className="lg:hidden mb-8 text-center">
-            <span className="font-display text-3xl font-bold text-brand-900">
-              Grade<span className="text-amber">Me</span>
-            </span>
-          </div>
-
-          {children}
-        </div>
+      {/*
+        Mobile: full width, vertically centred, safe padding on all screen sizes.
+        The login/signup page components each render their own top bar with the
+        logo — no logo is rendered here to avoid duplication on mobile.
+      */}
+      <div className="flex-1 flex flex-col min-h-screen lg:min-h-0">
+        {children}
       </div>
 
     </div>

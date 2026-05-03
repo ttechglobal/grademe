@@ -1,188 +1,70 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { CheckSquare, ToggleLeft, PenLine, GitBranch } from 'lucide-react'
-import { FLAGS } from '@/lib/featureFlags'
-import Button from '@/components/ui/Button'
-import { cn } from '@/lib/utils'
+import { CheckSquare, ToggleLeft, Calculator } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-/**
- * Question type definitions.
- * Adding a new type in the future = adding one object to this array.
- */
 const QUESTION_TYPES = [
   {
-    id:          'mcq',
-    icon:        CheckSquare,
-    iconBg:      'bg-brand-100',
-    iconColor:   'text-brand-600',
-    title:       'Multiple Choice',
-    description: 'Students choose one correct answer from four options',
-    available:   true,   // always on
+    id: 'mcq',
+    label: 'Multiple Choice',
+    description: 'Students choose one correct answer from four options. Great for testing knowledge recall.',
+    icon: CheckSquare,
   },
   {
-    id:          'true_false',
-    icon:        ToggleLeft,
-    iconBg:      'bg-amber-light',
-    iconColor:   'text-amber',
-    title:       'True or False',
-    description: 'Students decide if a statement is true or false',
-    get available() { return FLAGS.TRUE_FALSE_QUESTIONS },
+    id: 'true_false',
+    label: 'True / False',
+    description: 'Students decide if a statement is true or false. Quick to create and mark.',
+    icon: ToggleLeft,
   },
   {
-    id:          'short_answer',
-    icon:        PenLine,
-    iconBg:      'bg-surface',
-    iconColor:   'text-ink-4',
-    title:       'Short Answer',
-    description: 'Students write a brief response in their own words',
-    available:   false,
-    comingSoon:  true,
+    id: 'calculation',
+    label: 'Calculation / Math Input',
+    description: 'Students fill in structured answer boxes. Perfect for maths and physics calculations.',
+    icon: Calculator,
   },
-  {
-    id:          'stepwise',
-    icon:        GitBranch,
-    iconBg:      'bg-surface',
-    iconColor:   'text-ink-4',
-    title:       'Stepwise',
-    description: 'Students show full working step-by-step — great for Maths',
-    available:   false,
-    comingSoon:  true,
-  },
-]
+];
 
-function QuestionTypeCard({ type, selected, onClick }) {
-  const Icon = type.icon
-  const isAvailable = type.available
-
-  return (
-    <button
-      onClick={isAvailable ? onClick : undefined}
-      disabled={!isAvailable}
-      className={cn(
-        // Base
-        'relative w-full text-left rounded-2xl border-2 p-5 transition-all duration-200',
-        'flex flex-col gap-3',
-        // Available — interactive
-        isAvailable && !selected && [
-          'bg-white border-border cursor-pointer',
-          'hover:border-brand-400 hover:shadow-lg hover:-translate-y-0.5',
-        ],
-        // Selected state
-        isAvailable && selected && [
-          'bg-brand-50 border-brand-600 shadow-lg -translate-y-0.5 cursor-pointer',
-        ],
-        // Coming soon — greyed out
-        !isAvailable && [
-          'bg-surface border-border opacity-50 cursor-not-allowed',
-        ],
-      )}
-    >
-      {/* Coming Soon badge */}
-      {type.comingSoon && (
-        <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-widest text-ink-4 bg-border px-2 py-0.5 rounded-full">
-          Soon
-        </span>
-      )}
-
-      {/* Icon */}
-      <div className={cn(
-        'w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0',
-        isAvailable && selected ? 'bg-brand-600' : type.iconBg,
-      )}>
-        <Icon
-          size={20}
-          className={cn(
-            isAvailable && selected ? 'text-white' : type.iconColor,
-          )}
-        />
-      </div>
-
-      {/* Text */}
-      <div>
-        <p className={cn(
-          'text-base font-bold leading-snug',
-          isAvailable ? 'text-ink' : 'text-ink-4',
-        )}>
-          {type.title}
-        </p>
-        <p className={cn(
-          'text-sm mt-1 leading-relaxed',
-          isAvailable ? 'text-ink-3' : 'text-ink-4',
-        )}>
-          {type.description}
-        </p>
-      </div>
-
-      {/* Selection indicator */}
-      {isAvailable && (
-        <div className={cn(
-          'absolute top-4 right-4 w-5 h-5 rounded-full border-2 transition-all duration-150',
-          selected
-            ? 'border-brand-600 bg-brand-600'
-            : 'border-border bg-white',
-        )}>
-          {selected && (
-            <svg viewBox="0 0 10 10" className="w-full h-full p-0.5" fill="none">
-              <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </div>
-      )}
-    </button>
-  )
-}
-
+// The wizard calls this component as:
+//   <StepQuestionType onSelect={handleTypeSelect} />
+// handleTypeSelect(typeId) sets questionType state and advances to step 1.
+// This component holds NO selection state — the wizard owns it.
 export default function StepQuestionType({ onSelect }) {
-  const [selected, setSelected] = useState(null)
-
-  // Clicking a card selects it but does NOT advance automatically.
-  // The tutor must press Next → to proceed.
-  const handleCardClick = (typeId) => {
-    setSelected(typeId)
-  }
-
-  const handleNext = () => {
-    if (selected) onSelect(selected)
-  }
-
   return (
-    <div className="flex flex-col gap-8">
-
-      {/* Heading */}
+    <div className="space-y-6">
       <div>
-        <h2 className="font-display text-2xl font-bold text-ink leading-snug">
-          What type of questions do you want to create?
-        </h2>
-        <p className="text-sm text-ink-3 mt-2">
-          Choose a question type to get started.
+        <h2 className="text-xl font-bold text-ink mb-1">Question Type</h2>
+        <p className="text-ink-3 text-sm">
+          Choose the format students will use to answer questions. You can only use one type per assessment.
         </p>
       </div>
 
-      {/* Card grid — 2×2 on desktop, single column on mobile */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {QUESTION_TYPES.map((type) => (
-          <QuestionTypeCard
-            key={type.id}
-            type={type}
-            selected={selected === type.id}
-            onClick={() => handleCardClick(type.id)}
-          />
-        ))}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {QUESTION_TYPES.map((type) => {
+          const Icon = type.icon;
+          return (
+            <button
+              key={type.id}
+              type="button"
+              onClick={() => onSelect(type.id)}
+              className={cn(
+                'flex flex-col items-start gap-3 rounded-xl border-2 p-5 text-left transition-all duration-150',
+                'border-border bg-white hover:border-brand-500 hover:shadow-sm',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500'
+              )}
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface text-brand-500">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div className="space-y-1">
+                <p className="font-semibold text-sm leading-tight text-ink">{type.label}</p>
+                <p className="text-xs text-ink-3 leading-relaxed">{type.description}</p>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Next button — disabled until a type is selected */}
-      <div className="flex flex-col gap-2 pt-2">
-        <Button
-          variant="primary"
-          onClick={handleNext}
-          disabled={!selected}
-          className="w-full"
-        >
-          {selected ? 'Next →' : 'Select a question type to continue'}
-        </Button>
-      </div>
-
+      <p className="text-xs text-ink-4 text-center pt-2">Select a question type to continue.</p>
     </div>
-  )
+  );
 }

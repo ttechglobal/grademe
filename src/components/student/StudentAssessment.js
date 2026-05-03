@@ -2,15 +2,64 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import {
-  Clock, AlertTriangle, CheckCircle, XCircle, CheckCircle2,
-  History, X, ChevronLeft, ChevronRight,
+  Clock, AlertTriangle, CheckCircle2,
+  XCircle, History, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import MathRenderer        from '@/components/ui/MathRenderer'
 import ExplanationRenderer from '@/components/ui/ExplanationRenderer'
+import MathAnswerInput     from '@/components/student/MathAnswerInput'
 import { gradeAnswer }     from '@/lib/gradeAnswer'
 import { cn } from '@/lib/utils'
 
-// ── Confetti — lightweight CSS-only particles for celebration ─────────────
+// ─── Type helpers ──────────────────────────────────────────────────────────────
+function isCalcQ(q) {
+  return q?.type === 'calculation' || q?.question_type === 'calculation'
+}
+function isTFQ(q) {
+  return (
+    q?.type === 'truefalse'    ||
+    q?.type === 'true_false'   ||
+    q?.question_type === 'true_false'
+  )
+}
+
+// Question text — DB column is question_text; history entries use text
+function qText(q) {
+  return q?.question_text || q?.text || ''
+}
+
+// Grade a calculation question: every box must match accepted[]
+function gradeCalc(boxValues, template) {
+  if (!template?.structure?.length) return false
+  const vals = (typeof boxValues === 'object' && boxValues !== null) ? boxValues : {}
+  return template.structure.every((item) => {
+    const student  = (vals[item.id] ?? '').trim().toLowerCase()
+    const accepted = (item.accepted ?? [item.answer]).map((a) => String(a).trim().toLowerCase())
+    return accepted.includes(student)
+  })
+}
+
+// True if every box in the template has a non-empty value
+function calcFullyAnswered(boxValues, template) {
+  if (!template?.structure?.length) return false
+  const vals = (typeof boxValues === 'object' && boxValues !== null) ? boxValues : {}
+  return template.structure.every((item) => (vals[item.id] ?? '').trim().length > 0)
+}
+
+// Build { [boxId]: 'correct' | 'wrong' } for MathAnswerInput results mode
+function calcBoxResults(boxValues, template) {
+  if (!template?.structure?.length) return {}
+  const vals = (typeof boxValues === 'object' && boxValues !== null) ? boxValues : {}
+  return Object.fromEntries(
+    template.structure.map((item) => {
+      const student  = (vals[item.id] ?? '').trim().toLowerCase()
+      const accepted = (item.accepted ?? [item.answer]).map((a) => String(a).trim().toLowerCase())
+      return [item.id, accepted.includes(student) ? 'correct' : 'wrong']
+    })
+  )
+}
+
+// ─── Confetti ─────────────────────────────────────────────────────────────────
 function Confetti() {
   const pieces = Array.from({ length: 28 }, (_, i) => ({
     id:    i,
@@ -20,7 +69,6 @@ function Confetti() {
     dur:   `${2.5 + (i % 4) * 0.3}s`,
     size:  i % 3 === 0 ? 8 : 6,
   }))
-
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden z-10" aria-hidden="true">
       <style>{`
@@ -31,52 +79,34 @@ function Confetti() {
         }
       `}</style>
       {pieces.map((p) => (
-        <div
-          key={p.id}
-          style={{
-            position:        'absolute',
-            top:             '-10px',
-            left:            p.left,
-            width:           p.size,
-            height:          p.size,
-            backgroundColor: p.color,
-            borderRadius:    p.id % 2 === 0 ? '50%' : '2px',
-            animation:       `confetti-fall ${p.dur} ${p.delay} ease-in forwards`,
-          }}
-        />
+        <div key={p.id} style={{
+          position: 'absolute', top: '-10px', left: p.left,
+          width: p.size, height: p.size, backgroundColor: p.color,
+          borderRadius: p.id % 2 === 0 ? '50%' : '2px',
+          animation: `confetti-fall ${p.dur} ${p.delay} ease-in forwards`,
+        }} />
       ))}
     </div>
   )
 }
 
-// ── Submit confirmation modal ──────────────────────────────────────────────
-// Replaces window.confirm() — bottom sheet on mobile, centered modal on desktop.
+// ─── Submit confirmation modal ─────────────────────────────────────────────────
 function SubmitConfirmModal({ answered, total, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      {/* Overlay */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onCancel}
-      />
-      {/* Sheet / Modal */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
       <div className={cn(
         'relative bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl',
         'px-6 pt-6 pb-8 shadow-2xl',
         'animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:fade-in sm:zoom-in-95 duration-200'
       )}>
-        {/* Drag handle — mobile only */}
         <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5 sm:hidden" />
-
         <div className="text-3xl mb-3">📋</div>
-        <h2 className="font-display text-xl font-bold text-ink mb-2">
-          Ready to submit?
-        </h2>
+        <h2 className="font-display text-xl font-bold text-ink mb-2">Ready to submit?</h2>
         <p className="text-sm text-ink-3 leading-relaxed mb-6">
           You have answered <strong className="text-ink">{answered} of {total}</strong> questions.
           Once submitted you cannot change your answers.
         </p>
-
         <div className="flex gap-3">
           <button
             onClick={onCancel}
@@ -96,26 +126,20 @@ function SubmitConfirmModal({ answered, total, onConfirm, onCancel }) {
   )
 }
 
-// ── Copy-protection hook ──────────────────────────────────────────────────
-// Applied only on TestScreen and ReviewScreen — never on StartScreen.
-// Cleans up all listeners automatically when the component unmounts.
+// ─── Copy-protection hook ──────────────────────────────────────────────────────
 function useCopyProtection(active = true) {
   useEffect(() => {
     if (!active) return
-
     const blockContext  = (e) => e.preventDefault()
     const blockDrag     = (e) => e.preventDefault()
     const blockShortcut = (e) => {
-      if ((e.ctrlKey || e.metaKey) &&
-          ['c', 'a', 'x', 'u'].includes(e.key.toLowerCase())) {
+      if ((e.ctrlKey || e.metaKey) && ['c', 'a', 'x', 'u'].includes(e.key.toLowerCase())) {
         e.preventDefault()
       }
     }
-
     document.addEventListener('contextmenu', blockContext)
     document.addEventListener('dragstart',   blockDrag)
     document.addEventListener('keydown',     blockShortcut)
-
     return () => {
       document.removeEventListener('contextmenu', blockContext)
       document.removeEventListener('dragstart',   blockDrag)
@@ -124,10 +148,9 @@ function useCopyProtection(active = true) {
   }, [active])
 }
 
-
-// ── Storage helpers ────────────────────────────────────────────────────────
+// ─── Storage helpers ───────────────────────────────────────────────────────────
 const HISTORY_KEY = 'grademee_student_history'
-const MAX_HISTORY  = 30
+const MAX_HISTORY = 30
 
 function saveToHistory(entry) {
   try {
@@ -141,279 +164,90 @@ function saveToHistory(entry) {
 }
 
 function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]') } catch { return [] }
-}
-
-function clearHistory() {
-  try { localStorage.removeItem(HISTORY_KEY) } catch { /**/ }
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]') }
+  catch { return [] }
 }
 
 function getSessionKey() {
-  try {
-    const s = sessionStorage.getItem('grademee_session')
-    if (s) return s
-    const k = Math.random().toString(36).slice(2) + Date.now().toString(36)
-    sessionStorage.setItem('grademee_session', k)
-    return k
-  } catch { return Math.random().toString(36).slice(2) }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-// ── Score ring ─────────────────────────────────────────────────────────────
-function ScoreRing({ pct, size = 52 }) {
-  const r = size / 2 - 5, circ = 2 * Math.PI * r, dash = (pct / 100) * circ
-  const col = pct >= 75 ? '#2da44e' : pct >= 50 ? '#f5a623' : '#e5534b'
-  return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e5e5e0" strokeWidth="4" />
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth="4"
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" />
-    </svg>
-  )
-}
-
-// ── Countdown timer ────────────────────────────────────────────────────────
+// ─── Countdown timer ───────────────────────────────────────────────────────────
 function CountdownTimer({ totalSeconds, onExpire, onWarn }) {
-  const [secs, setSecs]    = useState(totalSeconds)
-  const warnRef            = useRef(false)
-  const expireRef          = useRef(false)
+  const [remaining, setRemaining] = useState(totalSeconds)
+  const warned = useRef(false)
 
   useEffect(() => {
-    if (!totalSeconds) return
-    const iv = setInterval(() => {
-      setSecs((p) => {
-        const n = p - 1
-        if (n === 300 && !warnRef.current)  { warnRef.current   = true; onWarn?.()   }
-        if (n <= 0   && !expireRef.current) { expireRef.current = true; clearInterval(iv); onExpire?.(); return 0 }
-        return n
+    const id = setInterval(() => {
+      setRemaining((r) => {
+        const next = r - 1
+        if (!warned.current && next <= 300) { warned.current = true; onWarn?.() }
+        if (next <= 0) { clearInterval(id); onExpire?.() }
+        return Math.max(0, next)
       })
     }, 1000)
-    return () => clearInterval(iv)
-  }, [totalSeconds])
+    return () => clearInterval(id)
+  }, [onExpire, onWarn])
 
-  const m = Math.floor(secs / 60), s = secs % 60
-  const pct    = (secs / totalSeconds) * 100
-  const warn   = secs <= 300 && secs > 60
-  const danger = secs <= 60
+  const m      = Math.floor(remaining / 60)
+  const s      = remaining % 60
+  const pct    = (remaining / totalSeconds) * 100
+  const danger = remaining <= 60
+  const warn   = remaining <= 300 && !danger
 
   return (
     <div className={cn(
-      'flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all',
-      danger ? 'bg-danger-light border-danger animate-pulse' :
-      warn   ? 'bg-amber-light border-amber' : 'bg-brand-50 border-brand-200'
+      'flex items-center gap-2 px-3 py-2 rounded-xl border transition-colors',
+      danger ? 'bg-red-50 border-red-300 animate-pulse' :
+      warn   ? 'bg-amber/10 border-amber/30'            : 'bg-surface border-border'
     )}>
-      <Clock size={14} className={danger ? 'text-danger' : warn ? 'text-amber' : 'text-brand-600'} />
+      <Clock size={14} className={danger ? 'text-red-500' : warn ? 'text-amber' : 'text-brand-500'} />
       <div className="flex flex-col gap-0.5">
         <span className={cn(
           'text-sm font-bold tabular-nums',
-          danger ? 'text-danger' : warn ? 'text-amber' : 'text-brand-700'
+          danger ? 'text-red-600' : warn ? 'text-amber' : 'text-brand-700'
         )}>
           {String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}
         </span>
         <div className="w-16 h-1 bg-white/60 rounded-full overflow-hidden">
-          <div className={cn(
-            'h-full rounded-full transition-all duration-1000',
-            danger ? 'bg-danger' : warn ? 'bg-amber' : 'bg-brand-500'
-          )} style={{ width: `${pct}%` }} />
+          <div
+            className={cn('h-full rounded-full transition-all duration-1000',
+              danger ? 'bg-red-500' : warn ? 'bg-amber' : 'bg-brand-500'
+            )}
+            style={{ width: `${pct}%` }}
+          />
         </div>
       </div>
     </div>
   )
 }
 
-// ── Hint reveal button ─────────────────────────────────────────────────────
-// Standalone so state resets per-question when key changes
+// ─── Hint reveal button ────────────────────────────────────────────────────────
 function HintButton({ hint }) {
   const [open, setOpen] = useState(false)
   if (!hint?.trim()) return null
   return open ? (
-    <div className="flex items-start gap-2 bg-amber-light border border-amber/25 rounded-xl px-4 py-3">
+    <div className="flex items-start gap-2 bg-amber/10 border border-amber/25 rounded-xl px-4 py-3">
       <span className="text-sm flex-shrink-0">💡</span>
       <p className="text-sm text-amber leading-relaxed flex-1">{hint}</p>
       <button
         onClick={() => setOpen(false)}
         className="text-amber/50 hover:text-amber text-lg leading-none flex-shrink-0"
-      >×</button>
+      >
+        ×
+      </button>
     </div>
   ) : (
     <button
       onClick={() => setOpen(true)}
-      className="inline-flex items-center gap-2 text-xs font-bold text-amber bg-amber-light border border-amber/25 px-3 py-2 rounded-xl hover:bg-amber/20 transition-colors self-start"
+      className="inline-flex items-center gap-2 text-xs font-bold text-amber bg-amber/10 border border-amber/25 px-3 py-2 rounded-xl hover:bg-amber/20 transition-colors self-start"
     >
       💡 Show Hint
     </button>
   )
 }
 
-// ── Past review screen (from history) ─────────────────────────────────────
-function PastReviewScreen({ entry, onBack }) {
-  const { questions = [], answers = {}, title, subject } = entry
-  const [idx, setIdx] = useState(0)
-  const q = questions[idx]
-  if (!q) return null
-
-  const sa      = answers[idx] ?? ''
-  const ok      = sa.toUpperCase() === (q.answer ?? '').toUpperCase()  // PastReview — type may not be stored, safe fallback
-  const total   = questions.length
-
-  return (
-    <div className="min-h-screen bg-[#f7f7f5] flex flex-col">
-      <div className="bg-brand-900 px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
-        <button onClick={onBack} className="text-white/60 hover:text-white">
-          <ChevronLeft size={20} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-semibold text-sm truncate">{title}</p>
-          <p className="text-white/40 text-xs">Reviewing Q{idx + 1} of {total}</p>
-        </div>
-        <div className="w-20 flex-shrink-0">
-          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-amber rounded-full transition-all"
-              style={{ width: `${((idx + 1) / total) * 100}%` }} />
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full flex flex-col gap-5">
-        <QuestionReviewCard
-          q={q}
-          idx={idx}
-          total={total}
-          studentAnswer={sa}
-          isCorrect={ok}
-          subject={entry.subject}
-        />
-        <ReviewNav idx={idx} total={total} onPrev={() => setIdx(i => i - 1)} onNext={() => setIdx(i => i + 1)} onDone={onBack} />
-      </div>
-    </div>
-  )
-}
-
-// ── Shared question review card ────────────────────────────────────────────
-function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, subject }) {
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Per-question message */}
-      <div className={cn(
-        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2',
-        ok
-          ? 'bg-success-light border-success/30 text-success'
-          : 'bg-brand-50 border-brand-200 text-brand-700'
-      )}>
-        {ok
-          ? <CheckCircle2 size={18} className="flex-shrink-0 text-success" />
-          : <XCircle      size={18} className="flex-shrink-0 text-brand-500" />
-        }
-        <span className="text-sm font-semibold">
-          {ok ? 'You got this one right! Great job.' : "Let's look at this one together."}
-        </span>
-      </div>
-
-      {/* Question text */}
-      <div className="bg-white border border-border rounded-2xl px-5 py-5">
-        <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">Question</p>
-        <p className="text-base font-semibold text-ink leading-relaxed">
-          <MathRenderer text={q.text} />
-        </p>
-      </div>
-
-      {/* Answer options — branched by question type */}
-      {(q.type === 'truefalse' || q.question_type === 'true_false') ? (
-        /* ── True/False review ──────────────────────────────────────────── */
-        <div className="grid grid-cols-2 gap-3">
-          {['True', 'False'].map((val) => {
-            const isCorrect  = val.toLowerCase() === (q.answer ?? '').toLowerCase()
-            const isStudent  = val.toLowerCase() === (sa ?? '').toLowerCase()
-
-            let style = 'border-border bg-white text-ink-3'
-            let badge = null
-
-            if (isCorrect && isStudent) {
-              style = 'border-success bg-success-light text-success font-semibold'
-              badge = <span className="text-xs font-bold">✓ Correct</span>
-            } else if (isCorrect) {
-              style = 'border-success/60 bg-success-light/60 text-success'
-              badge = <span className="text-xs font-bold opacity-80">✓ Correct answer</span>
-            } else if (isStudent) {
-              style = 'border-danger bg-danger-light text-danger font-semibold'
-              badge = <span className="text-xs font-bold">✗ Your answer</span>
-            }
-
-            return (
-              <div key={val} className={cn(
-                'flex flex-col items-center justify-center gap-2 py-5 rounded-2xl border-2 text-center',
-                style
-              )}>
-                {val === 'True'
-                  ? <CheckCircle2 size={28} className={isCorrect && isStudent ? 'text-success' : isCorrect ? 'text-success' : isStudent ? 'text-danger' : 'text-ink-4'} />
-                  : <XCircle      size={28} className={isCorrect && isStudent ? 'text-success' : isCorrect ? 'text-success' : isStudent ? 'text-danger' : 'text-ink-4'} />
-                }
-                <span className="text-base font-bold">{val}</span>
-                {badge && <div className="text-xs">{badge}</div>}
-              </div>
-            )
-          })}
-        </div>
-      ) : q.options?.length > 0 ? (
-        /* ── MCQ review ─────────────────────────────────────────────────── */
-        <div className="flex flex-col gap-2.5">
-          {q.options.map((opt, oi) => {
-            const letter     = String.fromCharCode(65 + oi)
-            const optLetter  = opt.trim().charAt(0)
-            const isCorrect  = letter === q.answer || optLetter === q.answer
-            const isStudent  = letter === sa       || optLetter === sa
-
-            let style = 'border-border bg-white text-ink-4'
-            let badge = null
-
-            if (isCorrect && isStudent) {
-              style = 'border-success bg-success-light text-success font-semibold'
-              badge = <span className="text-xs font-bold ml-auto flex-shrink-0">✓ Correct</span>
-            } else if (isCorrect) {
-              style = 'border-success/60 bg-success-light/60 text-success'
-              badge = <span className="text-xs font-bold ml-auto flex-shrink-0 opacity-80">✓ Correct answer</span>
-            } else if (isStudent) {
-              style = 'border-danger bg-danger-light text-danger font-semibold'
-              badge = <span className="text-xs font-bold ml-auto flex-shrink-0">✗ Your answer</span>
-            }
-
-            return (
-              <div key={oi} className={cn('flex items-center gap-3 px-4 py-3.5 rounded-2xl border-2 text-sm', style)}>
-                <span className={cn(
-                  'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0',
-                  isCorrect && isStudent ? 'bg-success text-white' :
-                  isCorrect             ? 'bg-success/60 text-white' :
-                  isStudent             ? 'bg-danger text-white' :
-                                          'bg-surface text-ink-4'
-                )}>
-                  {letter}
-                </span>
-                <span className="flex-1 leading-relaxed">
-                  <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                </span>
-                {badge}
-              </div>
-            )
-          })}
-        </div>
-      ) : null}
-
-      {/* Hint — hidden behind button, key resets state per question */}
-      <HintButton key={`hint-${idx}`} hint={q.hint} />
-
-      {/* Explanation */}
-      {q.explanation?.trim() && (
-        <ExplanationRenderer
-          explanation={q.explanation}
-          hint={null}    /* hint handled separately above */
-          subject={subject}
-          showClosing={true}
-        />
-      )}
-    </div>
-  )
-}
-
-// ── Review nav buttons ─────────────────────────────────────────────────────
+// ─── Review nav buttons ────────────────────────────────────────────────────────
 function ReviewNav({ idx, total, onPrev, onNext, onDone }) {
   return (
     <div className="flex items-center justify-between gap-3 pb-6">
@@ -425,16 +259,12 @@ function ReviewNav({ idx, total, onPrev, onNext, onDone }) {
         <ChevronLeft size={15} /> Previous
       </button>
 
-      {/* Question dots */}
       <div className="flex items-center gap-1.5 overflow-x-auto max-w-[140px]">
         {Array.from({ length: total }).map((_, i) => (
-          <div
-            key={i}
-            className={cn(
-              'w-2 h-2 rounded-full flex-shrink-0 transition-all',
-              i === idx ? 'bg-brand-800 w-4' : 'bg-border'
-            )}
-          />
+          <div key={i} className={cn(
+            'w-2 h-2 rounded-full flex-shrink-0 transition-all',
+            i === idx ? 'bg-brand-800 w-4' : 'bg-border'
+          )} />
         ))}
       </div>
 
@@ -457,37 +287,338 @@ function ReviewNav({ idx, total, onPrev, onNext, onDone }) {
   )
 }
 
-// ── Start screen — companion welcome ───────────────────────────────────────
+// ─── Shared question review card ───────────────────────────────────────────────
+function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, subject }) {
+  const isCalc = isCalcQ(q)
+  const isTF   = isTFQ(q)
+  const boxResults = isCalc ? calcBoxResults(sa, q.answer_template) : null
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* Result banner */}
+      <div className={cn(
+        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2',
+        ok
+          ? 'bg-green-50 border-green-200 text-green-700'
+          : 'bg-surface border-border text-brand-700'
+      )}>
+        {ok
+          ? <CheckCircle2 size={18} className="flex-shrink-0 text-green-500" />
+          : <XCircle      size={18} className="flex-shrink-0 text-brand-500" />
+        }
+        <span className="text-sm font-semibold">
+          {ok ? 'You got this one right! Great job.' : "Let's look at this one together."}
+        </span>
+      </div>
+
+      {/* Question text */}
+      <div className="bg-white border border-border rounded-2xl px-5 py-5">
+        <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
+          Question {idx + 1}
+        </p>
+        <p className="text-base font-semibold text-ink leading-relaxed">
+          <MathRenderer text={qText(q)} />
+        </p>
+      </div>
+
+      {/* ── Answer display ────────────────────────────────────────────────────── */}
+
+      {/* Calculation */}
+      {isCalc && (
+        <div className="bg-white border border-border rounded-2xl px-5 py-5 space-y-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-ink-4">Your Answer</p>
+
+          {/* Student's filled values with correct/wrong colouring */}
+          <MathAnswerInput
+            template={q.answer_template}
+            values={typeof sa === 'object' && sa !== null ? sa : {}}
+            results={boxResults}
+            readOnly
+          />
+
+          {/* Show the correct answer underneath if any box was wrong */}
+          {!ok && q.answer_template?.structure?.length > 0 && (
+            <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-4">
+              <p className="text-xs font-bold text-green-700 mb-3">Correct Answer</p>
+              <MathAnswerInput
+                template={q.answer_template}
+                values={Object.fromEntries(
+                  q.answer_template.structure.map((item) => [item.id, item.answer])
+                )}
+                readOnly
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* True / False */}
+      {!isCalc && isTF && (
+        <div className="grid grid-cols-2 gap-3">
+          {['True', 'False'].map((val) => {
+            const isCorrect = val.toLowerCase() === (q.answer ?? '').toLowerCase()
+            const isStudent = val.toLowerCase() === (sa ?? '').toLowerCase()
+            return (
+              <div key={val} className={cn(
+                'flex flex-col items-center gap-2 py-5 rounded-2xl border-2 text-sm font-semibold',
+                isCorrect && isStudent  ? 'border-green-400 bg-green-50 text-green-700' :
+                isCorrect && !isStudent ? 'border-green-300 bg-green-50/50 text-green-600' :
+                !isCorrect && isStudent ? 'border-red-400 bg-red-50 text-red-600' :
+                                          'border-border text-ink-4'
+              )}>
+                <span className="text-2xl">{val === 'True' ? '✅' : '❌'}</span>
+                <span>{val}</span>
+                {isCorrect && <span className="text-[10px] font-bold">✓ Correct</span>}
+                {!isCorrect && isStudent && <span className="text-[10px] font-bold">Your answer</span>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* MCQ */}
+      {!isCalc && !isTF && q.options?.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {q.options.map((opt, oi) => {
+            const letter    = String.fromCharCode(65 + oi)
+            const optLetter = opt.charAt(0)
+            const isCorrect = optLetter === q.answer || letter === q.answer
+            const isStudent = optLetter === sa        || letter === sa
+            let badge = null
+            let cls   = 'border-border bg-white text-ink-3'
+            if      (isCorrect && isStudent)  { cls = 'border-green-400 bg-green-50 text-green-700 font-semibold'; badge = '✓ Correct' }
+            else if (isCorrect)               { cls = 'border-green-300 bg-green-50/60 text-green-600';            badge = '✓ Correct answer' }
+            else if (isStudent)               { cls = 'border-red-400 bg-red-50 text-red-600 font-semibold';       badge = '✗ Your answer' }
+            return (
+              <div key={oi} className={cn(
+                'flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm transition-colors', cls
+              )}>
+                <span className={cn(
+                  'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
+                  isCorrect && isStudent ? 'bg-green-500 text-white' :
+                  isCorrect             ? 'bg-green-400 text-white' :
+                  isStudent             ? 'bg-red-500   text-white' : 'bg-surface text-ink-4'
+                )}>
+                  {letter}
+                </span>
+                <span className="flex-1 leading-relaxed">
+                  <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
+                </span>
+                {badge && <span className="text-xs font-bold ml-auto flex-shrink-0">{badge}</span>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Hint */}
+      <HintButton key={`hint-${idx}`} hint={q.hint} />
+
+      {/* Explanation */}
+      {q.explanation?.trim() && (
+        <ExplanationRenderer
+          explanation={q.explanation}
+          hint={null}
+          subject={subject}
+          showClosing
+        />
+      )}
+
+    </div>
+  )
+}
+
+// ─── Past review screen (from localStorage history) ───────────────────────────
+function PastReviewScreen({ entry, onBack }) {
+  const { questions = [], answers = {}, title, subject } = entry
+  const [idx, setIdx] = useState(0)
+  const q     = questions[idx]
+  const total = questions.length
+  if (!q) return null
+
+  const sa = answers[idx] ?? ''
+  const ok = isCalcQ(q)
+    ? gradeCalc(sa, q.answer_template)
+    : gradeAnswer(sa ?? '', q.answer, q.type ?? q.question_type)
+
+  return (
+    <div className="min-h-screen bg-[#f7f7f5] flex flex-col">
+      <div className="bg-brand-900 px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
+        <button onClick={onBack} className="text-white/60 hover:text-white">
+          <ChevronLeft size={20} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-semibold text-sm truncate">{title}</p>
+          <p className="text-white/40 text-xs">Reviewing Q{idx + 1} of {total}</p>
+        </div>
+        <div className="w-20 flex-shrink-0">
+          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-amber rounded-full transition-all"
+              style={{ width: `${((idx + 1) / total) * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full flex flex-col gap-5">
+        <QuestionReviewCard
+          q={q} idx={idx} total={total}
+          studentAnswer={sa} isCorrect={ok} subject={subject}
+        />
+        <ReviewNav
+          idx={idx} total={total}
+          onPrev={() => setIdx((i) => i - 1)}
+          onNext={() => setIdx((i) => i + 1)}
+          onDone={onBack}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Review screen (post-result, all questions) ────────────────────────────────
+function ReviewAllScreen({ assessment, answers, onDone }) {
+  const questions = assessment.questions ?? []
+  const [idx, setIdx] = useState(0)
+  useCopyProtection(true)
+  const q = questions[idx]
+  if (!q) return null
+
+  const sa = answers[idx]
+  const ok = isCalcQ(q)
+    ? gradeCalc(sa, q.answer_template)
+    : gradeAnswer(sa ?? '', q.answer, q.type ?? q.question_type)
+
+  return (
+    <div
+      className="min-h-screen bg-[#f7f7f5] flex flex-col"
+      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
+    >
+      <div className="bg-brand-900 px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
+        <button onClick={onDone} className="text-white/60 hover:text-white">
+          <ChevronLeft size={20} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-semibold text-sm truncate">Review — {assessment.title}</p>
+          <p className="text-white/40 text-xs">Question {idx + 1} of {questions.length}</p>
+        </div>
+        <div className="w-24 flex-shrink-0">
+          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-amber rounded-full transition-all"
+              style={{ width: `${((idx + 1) / questions.length) * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Question dots */}
+      <div className="flex gap-1.5 px-4 py-3 overflow-x-auto bg-white border-b border-border">
+        {questions.map((ques, i) => {
+          const a = answers[i]
+          const c = isCalcQ(ques)
+            ? gradeCalc(a, ques.answer_template)
+            : gradeAnswer(a ?? '', ques.answer, ques.type ?? ques.question_type)
+          return (
+            <button key={i} onClick={() => setIdx(i)}
+              className={cn(
+                'w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 transition-all border-2',
+                i === idx ? 'bg-brand-800 text-white border-brand-800 scale-110' :
+                c         ? 'bg-green-50 text-green-600 border-green-300' :
+                            'bg-red-50 text-red-500 border-red-200'
+              )}>
+              {i + 1}
+            </button>
+          )
+        })}
+      </div>
+
+      <div key={idx} className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full flex flex-col gap-5">
+        <QuestionReviewCard
+          q={q} idx={idx} total={questions.length}
+          studentAnswer={sa} isCorrect={ok} subject={assessment.subject}
+        />
+        <ReviewNav
+          idx={idx} total={questions.length}
+          onPrev={() => setIdx((i) => i - 1)}
+          onNext={() => setIdx((i) => i + 1)}
+          onDone={onDone}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Result screen ─────────────────────────────────────────────────────────────
+function ResultScreen({ score, correct, total, onReview }) {
+  const pct       = score ?? 0
+  const isPerfect = pct === 100
+
+  const grade =
+    pct >= 90 ? { emoji: '🏆', label: 'Outstanding!',    sub: 'You nailed it. Perfect performance!' }      :
+    pct >= 75 ? { emoji: '🎉', label: 'Great job!',       sub: 'Really solid performance. Well done!' }     :
+    pct >= 60 ? { emoji: '👍', label: 'Good effort!',     sub: 'You are on the right track. Keep going!' }  :
+    pct >= 40 ? { emoji: '📚', label: 'Keep practising!', sub: 'Review the explanations to improve.' }      :
+                { emoji: '🌱', label: "Don't give up!",   sub: 'Everyone improves with practice.' }
+
+  return (
+    <div className="min-h-screen bg-[#f7f7f5] flex flex-col items-center justify-center px-4 py-10">
+      {isPerfect && <Confetti />}
+      <div className="w-full max-w-sm flex flex-col gap-5">
+        <div className="bg-white border border-border rounded-3xl px-6 py-8 text-center shadow-xl">
+          <div className="text-5xl mb-3">{grade.emoji}</div>
+          <p className="font-display text-4xl font-black text-ink mb-1">{pct}%</p>
+          <p className="text-sm text-ink-3 mb-1">{correct} of {total} correct</p>
+          <p className="text-base font-semibold text-brand-700 mb-4">{grade.label}</p>
+          <p className="text-sm text-ink-3 mb-5">{grade.sub}</p>
+          <div className="h-3 bg-surface rounded-full overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all duration-1000',
+                pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-amber' : 'bg-red-500'
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={onReview}
+          className="w-full py-3.5 rounded-2xl bg-brand-800 text-white font-bold hover:bg-brand-700 transition-colors"
+        >
+          Review Answers →
+        </button>
+        <p className="text-center text-xs text-ink-4">
+          Tap any question dot to jump to it during review
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Start screen ──────────────────────────────────────────────────────────────
 function StartScreen({ assessment, onStart }) {
-  const [name,         setName]         = useState('')
   const [showHistory,  setShowHistory]  = useState(false)
   const [reviewEntry,  setReviewEntry]  = useState(null)
   const [historyCount, setHistoryCount] = useState(0)
-  const [phase,        setPhase]        = useState('welcome') // 'welcome' | 'transition'
+  const [phase,        setPhase]        = useState('welcome')
   const [committed,    setCommitted]    = useState('')
 
   useEffect(() => { setHistoryCount(loadHistory().length) }, [])
 
-  const greetingCopy = {
-    quiz:       `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} quiz! Ready to show what you know?`,
-    test:       `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} test. Read each question carefully.`,
-    assignment: `You have a ${assessment.subject?.replace(/_/g, ' ') ?? ''} assignment. Take your time!`,
-  }[assessment.assessment_type ?? 'quiz'] ?? "Let's get started!"
-
-  // Resolve participant fields: use assessment.participant_fields if set, else Full Name only
   const participantFields = (assessment.participant_fields?.length > 0)
     ? assessment.participant_fields
     : [{ key: 'full_name', label: 'Full Name', required: true }]
 
-  // Track a value for every field
   const [fieldValues, setFieldValues] = useState(() =>
     Object.fromEntries(participantFields.map((f) => [f.key, '']))
   )
 
-  // name state stays as the canonical full_name (used by downstream logic)
   const fullNameValue = fieldValues['full_name'] ?? ''
 
-  const canStart = fullNameValue.trim().length >= 2 &&
+  const canStart =
+    fullNameValue.trim().length >= 2 &&
     participantFields
       .filter((f) => f.required && f.key !== 'full_name')
       .every((f) => (fieldValues[f.key] ?? '').trim().length > 0)
@@ -497,7 +628,6 @@ function StartScreen({ assessment, onStart }) {
     const trimmed = fullNameValue.trim()
     setCommitted(trimmed)
     setPhase('transition')
-    // Pass all extra fields alongside the name so they're saved with the submission
     setTimeout(() => onStart(trimmed, fieldValues), 2000)
   }
 
@@ -505,7 +635,6 @@ function StartScreen({ assessment, onStart }) {
     return <PastReviewScreen entry={reviewEntry} onBack={() => setReviewEntry(null)} />
   }
 
-  // ── Transition screen ────────────────────────────────────────────────────
   if (phase === 'transition') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex flex-col items-center justify-center p-5">
@@ -514,17 +643,15 @@ function StartScreen({ assessment, onStart }) {
             <span className="text-3xl">✊</span>
           </div>
           <div>
-            <p className="text-2xl font-bold text-white mb-1">
-              Hi {committed}!
-            </p>
-            <p className="text-white/70 text-base">
-              You've got this. Let's begin!
-            </p>
+            <p className="text-2xl font-bold text-white mb-1">Hi {committed}!</p>
+            <p className="text-white/70 text-base">You've got this. Let's begin!</p>
           </div>
-          <div className="flex gap-1.5 mt-2">
-            {[0,1,2].map((i) => (
-              <div key={i} className="w-2 h-2 rounded-full bg-amber/60 animate-pulse"
-                style={{ animationDelay: `${i * 0.2}s` }} />
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <div key={i}
+                className="w-2 h-2 rounded-full bg-white/30 animate-pulse"
+                style={{ animationDelay: `${i * 0.2}s` }}
+              />
             ))}
           </div>
         </div>
@@ -532,195 +659,136 @@ function StartScreen({ assessment, onStart }) {
     )
   }
 
-  // ── Welcome screen ───────────────────────────────────────────────────────
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex flex-col items-center justify-center p-5">
-      <div className="w-full max-w-sm flex flex-col items-center gap-5">
-
-        {/* Card */}
-        <div className="w-full bg-white rounded-3xl shadow-2xl overflow-hidden">
-
-          {/* Greeting header */}
-          <div className="bg-gradient-to-br from-brand-800 to-brand-900 px-7 pt-7 pb-6 text-center">
-            <p className="text-2xl font-bold text-white mb-1">Hey there!</p>
-            <p className="text-white/70 text-sm leading-relaxed">
-              {greetingCopy}
-            </p>
-            {assessment.title && (
-              <p className="text-amber/90 text-xs font-semibold mt-2 leading-relaxed">
-                Topic: {assessment.title}
-              </p>
-            )}
-            <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-              <span className="text-xs font-medium bg-white/10 text-white/70 px-2.5 py-1 rounded-full">
-                {assessment.questions?.length ?? 0} questions
-              </span>
-              {assessment.time_limit_mins && (
-                <span className="text-xs font-semibold bg-amber/20 text-amber px-2.5 py-1 rounded-full flex items-center gap-1">
-                  <Clock size={10} /> {assessment.time_limit_mins}m
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Name input */}
-          <div className="px-7 py-6 flex flex-col gap-4">
-            {/* Dynamic intake fields — label above input */}
-            <div className="flex flex-col gap-4">
-              <p className="text-xs text-ink-4">
-                {participantFields.length > 1
-                  ? 'Your details will be visible to your teacher.'
-                  : 'Your name will be visible to your teacher.'}
-              </p>
-              {participantFields.map((field, i) => (
-                <div key={field.key} className="flex flex-col gap-1.5">
-                  <label
-                    htmlFor={`field-${field.key}`}
-                    className="text-sm font-semibold text-ink"
-                  >
-                    {field.label}
-                    {field.required && (
-                      <span className="text-danger ml-1" aria-hidden="true">*</span>
-                    )}
-                  </label>
-                  <input
-                    id={`field-${field.key}`}
-                    type="text"
-                    value={fieldValues[field.key] ?? ''}
-                    onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && i === participantFields.length - 1) handleGo()
-                    }}
-                    placeholder={`Enter your ${field.label.toLowerCase()}`}
-                    autoFocus={i === 0}
-                    autoComplete={field.key === 'full_name' ? 'name' : 'off'}
-                    required={field.required}
-                    className="w-full px-4 py-4 bg-surface border-2 border-border rounded-2xl text-base text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all"
-                  />
-                </div>
+  if (showHistory) {
+    const history = loadHistory()
+    const mine    = history.filter((h) => h.slug === assessment.slug)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-brand-900 to-brand-700 flex flex-col items-center justify-start p-4 pt-10">
+        <div className="w-full max-w-sm">
+          <button
+            onClick={() => setShowHistory(false)}
+            className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white mb-5 transition-colors"
+          >
+            <ChevronLeft size={15} /> Back
+          </button>
+          <h2 className="font-display text-xl font-bold text-white mb-4">Your Past Attempts</h2>
+          {mine.length === 0 ? (
+            <p className="text-sm text-white/50">No past attempts for this assessment.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {mine.map((entry, i) => (
+                <button key={i} onClick={() => setReviewEntry(entry)}
+                  className="bg-white/10 border border-white/20 rounded-2xl px-4 py-4 text-left hover:bg-white/20 transition-colors">
+                  <p className="font-semibold text-white text-sm">{entry.studentName}</p>
+                  <p className="text-xs text-white/50 mt-0.5">
+                    {new Date(entry.completedAt).toLocaleDateString()}
+                  </p>
+                  <p className="text-2xl font-black text-amber mt-1">{entry.score}%</p>
+                </button>
               ))}
             </div>
-            {assessment.time_limit_mins && (
-              <div className="bg-amber-light border border-amber/20 rounded-xl px-4 py-3 text-xs text-amber leading-relaxed flex items-start gap-2">
-                <Clock size={13} className="flex-shrink-0 mt-0.5" />
-                This assessment has a {assessment.time_limit_mins}-minute timer. It starts when you begin.
-              </div>
-            )}
-            <button
-              onClick={handleGo}
-              disabled={!canStart}
-              className="w-full py-4 bg-brand-900 text-white font-bold text-base rounded-2xl hover:bg-brand-700 transition-all shadow-lg shadow-brand-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              I'm Ready — Let's Go! →
-            </button>
-          </div>
+          )}
         </div>
-
-        {/* History button */}
-        {historyCount > 0 && (
-          <button onClick={() => setShowHistory(true)}
-            className="flex items-center justify-center gap-2 w-full py-3 bg-white/10 hover:bg-white/15 text-white text-sm font-semibold rounded-2xl border border-white/20 transition-colors">
-            <History size={15} /> View Past Assessments ({historyCount})
-          </button>
-        )}
-        <p className="text-center text-xs text-white/30">
-          Powered by <span className="font-semibold text-white/50">GradeMee</span>
-        </p>
       </div>
-
-      {showHistory && (
-        <HistoryPanel
-          studentName={name.trim() || null}
-          onReviewPast={(e) => { setReviewEntry(e); setShowHistory(false) }}
-          onClose={() => setShowHistory(false)}
-        />
-      )}
-    </div>
-  )
-}
-
-// ── History panel ──────────────────────────────────────────────────────────
-function HistoryPanel({ studentName, onReviewPast, onClose }) {
-  const history = loadHistory().filter(
-    (h) => !studentName || h.studentName?.toLowerCase() === studentName.toLowerCase()
-  )
-  if (!history.length) return null
+    )
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-t-3xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+    <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex flex-col items-center justify-center px-4 py-10">
+      <div className="w-full max-w-sm flex flex-col gap-4">
+        <div className="bg-white rounded-3xl px-6 py-8 shadow-2xl flex flex-col gap-5">
           <div>
-            <h2 className="font-display text-lg font-bold text-ink">Past Assessments</h2>
-            <p className="text-xs text-ink-4 mt-0.5">{history.length} saved on this device</p>
+            <p className="text-xs font-bold text-brand-500 uppercase tracking-widest mb-1">
+              {assessment.subject?.replace(/_/g, ' ')}
+            </p>
+            <h1 className="font-display text-2xl font-bold text-ink leading-snug">
+              {assessment.title}
+            </h1>
+            <p className="text-sm text-ink-3 mt-1">
+              {assessment.questions?.length} question{assessment.questions?.length !== 1 ? 's' : ''}
+              {assessment.time_limit_mins ? ` · ${assessment.time_limit_mins} min` : ''}
+            </p>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center hover:bg-border">
-            <X size={14} />
+
+          <div className="flex flex-col gap-3">
+            {participantFields.map((field) => (
+              <div key={field.key}>
+                <label className="block text-xs font-semibold text-ink-3 mb-1.5">
+                  {field.label}
+                  {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                </label>
+                <input
+                  type="text"
+                  value={fieldValues[field.key] ?? ''}
+                  onChange={(e) => setFieldValues((p) => ({ ...p, [field.key]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && canStart) handleGo() }}
+                  placeholder={`Enter your ${field.label.toLowerCase()}`}
+                  className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                  style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+                />
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={handleGo}
+            disabled={!canStart}
+            className={cn(
+              'w-full py-4 rounded-2xl text-base font-bold transition-all',
+              canStart
+                ? 'bg-brand-800 text-white hover:bg-brand-700 active:scale-[0.98]'
+                : 'bg-border text-ink-4 cursor-not-allowed'
+            )}
+          >
+            Start Assessment →
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
-          {history.map((entry, i) => {
-            const pct   = entry.score ?? Math.round((entry.correct / entry.total) * 100)
-            const color = pct >= 75 ? 'text-success' : pct >= 50 ? 'text-amber' : 'text-danger'
-            const date  = new Date(entry.completedAt).toLocaleDateString('en-GB', {
-              day: 'numeric', month: 'short', year: 'numeric',
-            })
-            return (
-              <button key={i} onClick={() => onReviewPast(entry)}
-                className="flex items-center gap-4 p-4 rounded-2xl border border-border bg-white hover:border-brand-300 hover:bg-brand-50/30 text-left transition-all">
-                <div className="relative flex-shrink-0">
-                  <ScoreRing pct={pct} size={52} />
-                  <div className={cn('absolute inset-0 flex items-center justify-center text-xs font-bold', color)}>
-                    {pct}%
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-ink truncate">{entry.title}</p>
-                  <p className="text-xs text-ink-4 mt-0.5">{entry.correct}/{entry.total} correct · {date}</p>
-                </div>
-                <span className="text-xs font-semibold text-brand-600 bg-brand-50 px-2.5 py-1.5 rounded-lg flex-shrink-0">
-                  Review →
-                </span>
-              </button>
-            )
-          })}
-          <button onClick={() => { clearHistory(); onClose() }}
-            className="mt-1 w-full py-2.5 text-xs font-semibold text-danger border border-danger/20 rounded-xl hover:bg-danger-light transition-colors">
-            Clear all history
+
+        {historyCount > 0 && (
+          <button
+            onClick={() => setShowHistory(true)}
+            className="flex items-center justify-center gap-2 text-white/70 hover:text-white text-sm font-medium transition-colors py-2"
+          >
+            <History size={14} /> View past attempts
           </button>
-        </div>
+        )}
       </div>
     </div>
   )
 }
 
-// ── Test screen ────────────────────────────────────────────────────────────
-function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
-  const questions    = assessment.questions ?? []
-  const [answers,    setAnswers]    = useState({})
-  const [current,    setCurrent]    = useState(0)
-  const [showWarn,   setShowWarn]   = useState(false)
+// ─── Question screen (test phase) ─────────────────────────────────────────────
+function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit, timedOut }) {
+  const questions = assessment.questions ?? []
+
+  const [current,     setCurrent]     = useState(0)
+  const [showWarn,    setShowWarn]    = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const startTime    = useRef(Date.now())
-  const answered     = Object.keys(answers).length
-  const q            = questions[current]
+  const [submitting,  setSubmitting]  = useState(false)
+  const startTime = useRef(Date.now())
 
-  // Detect if current question is True/False — checks both type fields defensively
-  const isTrueFalse = (question) =>
-    question?.type === 'truefalse' ||
-    question?.type === 'true_false' ||
-    question?.question_type === 'true_false'
+  const q      = questions[current]
+  const isCalc = isCalcQ(q)
+  const isTF   = isTFQ(q)
 
-  // Current question has an answer selected
-  const hasAnswer = answers[current] !== undefined
+  // answered count — calculation counts only when all boxes filled
+  const answered = questions.filter((ques, i) => {
+    if (isCalcQ(ques)) return calcFullyAnswered(answers[i], ques.answer_template)
+    return answers[i] !== undefined && answers[i] !== ''
+  }).length
 
+  // Next button enabled?
+  const hasAnswer = isCalc
+    ? calcFullyAnswered(answers[current], q?.answer_template)
+    : answers[current] !== undefined
+
+  useCopyProtection(true)
+
+  // Auto-submit when timer fires
   useEffect(() => {
     if (timedOut && !submitting) doSubmit()
-  }, [timedOut])
+  }, [timedOut]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Called when the tutor confirms submission (or timer expires)
   const doSubmit = useCallback(() => {
     if (submitting) return
     setSubmitting(true)
@@ -728,7 +796,6 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
     onSubmit(answers, timeTakenSecs)
   }, [answers, submitting, onSubmit])
 
-  // Tap Submit button → show modal if any unanswered, else submit immediately
   const handleSubmitClick = useCallback(() => {
     if (submitting) return
     if (answered < questions.length) {
@@ -738,20 +805,25 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
     }
   }, [answered, questions.length, submitting, doSubmit])
 
-  const handleSubmit = useCallback(async (auto = false) => {
-    if (auto) { doSubmit(); return }
-    handleSubmitClick()
-  }, [doSubmit, handleSubmitClick])
+  // Update a single box inside a calculation answer object
+  const handleCalcChange = useCallback((boxId, val) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [current]: {
+        ...(typeof prev[current] === 'object' && prev[current] !== null ? prev[current] : {}),
+        [boxId]: val,
+      },
+    }))
+  }, [current, setAnswers])
 
-  // Block copying during the assessment
-  useCopyProtection(true)
+  if (!q) return null
 
   return (
     <div
       className="min-h-screen bg-[#f7f7f5] flex flex-col"
       style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
     >
-      {/* Submit confirmation modal — replaces window.confirm() */}
+
       {showConfirm && (
         <SubmitConfirmModal
           answered={answered}
@@ -765,13 +837,15 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
       <div className="bg-brand-900 px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-lg">
         <div>
           <p className="text-white font-semibold text-sm">{studentName}</p>
-          <p className="text-white/40 text-xs">{assessment.title} · {answered}/{questions.length} answered</p>
+          <p className="text-white/40 text-xs">
+            {assessment.title} · {answered}/{questions.length} answered
+          </p>
         </div>
         {assessment.time_limit_mins && (
           <div className="flex-1 max-w-[200px] mx-3">
             <CountdownTimer
               totalSeconds={assessment.time_limit_mins * 60}
-              onExpire={() => handleSubmit(true)}
+              onExpire={doSubmit}
               onWarn={() => setShowWarn(true)}
             />
           </div>
@@ -779,13 +853,15 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
         <div className="text-right flex-shrink-0">
           <p className="text-white/60 text-xs mb-1">Q{current + 1}/{questions.length}</p>
           <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-amber rounded-full transition-all duration-300"
-              style={{ width: `${((current + 1) / questions.length) * 100}%` }} />
+            <div
+              className="h-full bg-amber rounded-full transition-all duration-300"
+              style={{ width: `${((current + 1) / questions.length) * 100}%` }}
+            />
           </div>
         </div>
       </div>
 
-      {/* 5-min warning */}
+      {/* 5-min warning toast */}
       {showWarn && (
         <div className="fixed top-4 left-4 right-4 z-50 flex justify-center pointer-events-none">
           <div className="bg-amber text-brand-900 rounded-2xl px-5 py-4 shadow-xl flex items-center gap-4 max-w-sm w-full pointer-events-auto">
@@ -794,289 +870,31 @@ function TestScreen({ assessment, studentName, onSubmit, timedOut }) {
               <p className="font-bold text-sm">5 minutes remaining!</p>
               <p className="text-xs opacity-70 mt-0.5">Review your answers now.</p>
             </div>
-            <button onClick={() => setShowWarn(false)} className="text-xl font-bold opacity-60 hover:opacity-100">×</button>
+            <button
+              onClick={() => setShowWarn(false)}
+              className="text-xl font-bold opacity-60 hover:opacity-100"
+            >
+              ×
+            </button>
           </div>
         </div>
       )}
 
       {/* Question dots */}
       <div className="flex gap-1.5 px-4 py-3 overflow-x-auto bg-white border-b border-border">
-        {questions.map((_, i) => (
-          <button key={i} onClick={() => setCurrent(i)}
-            className={cn(
-              'w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 transition-all border-2',
-              i === current
-                ? 'bg-brand-800 text-white border-brand-800'
-                : answers[i] !== undefined
-                ? 'bg-success-light text-success border-success/30'
-                : 'bg-surface text-ink-4 border-border'
-            )}>
-            {i + 1}
-          </button>
-        ))}
-      </div>
-
-      {/* Question */}
-      {q && (
-        <div className="flex-1 px-4 py-7 max-w-2xl mx-auto w-full">
-          <div className="flex flex-col gap-5">
-
-            <div className="bg-white border border-border rounded-2xl px-5 py-5">
-              <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
-                Question {current + 1} of {questions.length}
-              </p>
-              <p className="text-lg font-semibold text-ink leading-relaxed">
-                <MathRenderer text={q.text} />
-              </p>
-            </div>
-
-            {/* Hint — hidden behind button; key resets state between questions */}
-            <HintButton key={`test-hint-${current}`} hint={q.hint} />
-
-            {/* MCQ options */}
-            <div className="flex flex-col gap-3">
-              {/* ── True/False question ─────────────────────────────────── */}
-              {isTrueFalse(q) ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {['True', 'False'].map((val) => {
-                    const sel = answers[current] === val
-                    return (
-                      <button
-                        key={val}
-                        onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
-                        className={cn(
-                          'flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 text-left transition-all',
-                          sel
-                            ? val === 'True'
-                              ? 'border-success bg-success-light shadow-sm'
-                              : 'border-danger bg-danger-light shadow-sm'
-                            : 'border-border bg-white hover:border-brand-300'
-                        )}
-                      >
-                        {val === 'True'
-                          ? <CheckCircle2 size={32} className={sel ? 'text-success' : 'text-ink-4'} />
-                          : <XCircle      size={32} className={sel ? 'text-danger'  : 'text-ink-4'} />
-                        }
-                        <span className={cn(
-                          'text-lg font-bold',
-                          sel
-                            ? val === 'True' ? 'text-success' : 'text-danger'
-                            : 'text-ink'
-                        )}>
-                          {val}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                /* ── MCQ options ────────────────────────────────────────── */
-                q.options?.map((opt, oi) => {
-                  const letter = String.fromCharCode(65 + oi)
-                  const sel    = answers[current] === letter
-                  return (
-                    <button key={oi}
-                      onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
-                      className={cn(
-                        'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all',
-                        sel ? 'border-brand-600 bg-brand-50 shadow-sm' : 'border-border bg-white hover:border-brand-300'
-                      )}
-                    >
-                      <span className={cn(
-                        'w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors',
-                        sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4'
-                      )}>{letter}</span>
-                      <span className={cn('text-sm font-medium leading-relaxed', sel ? 'text-brand-800' : 'text-ink')}>
-                        <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                      </span>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-
-            {/* Nav */}
-            <div className="flex items-center justify-between pt-3">
-              <button onClick={() => setCurrent((p) => Math.max(0, p - 1))} disabled={current === 0}
-                className="px-5 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink disabled:opacity-40 hover:bg-surface transition-colors">
-                ← Previous
-              </button>
-              {current < questions.length - 1 ? (
-                <button
-                  onClick={() => setCurrent((p) => p + 1)}
-                  disabled={!hasAnswer}
-                  className="px-5 py-2.5 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Next →
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmitClick}
-                  disabled={submitting}
-                  className="px-7 py-2.5 rounded-xl bg-amber text-ink text-sm font-bold hover:bg-amber/90 disabled:opacity-60 transition-colors"
-                >
-                  {submitting ? 'Submitting…' : `Submit (${answered}/${questions.length})`}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Result screen — animated score ring + companion messaging ─────────────
-function ResultScreen({ score, correct, total, onReview, studentName }) {
-  const pct = score ?? Math.round((correct / total) * 100)
-  const [displayed, setDisplayed] = useState(0)
-  const [showConfetti, setShowConfetti] = useState(pct >= 80)
-
-  // Count-up animation — ease-out over 1.5s
-  useEffect(() => {
-    const duration = 1500
-    const start    = Date.now()
-    const tick = () => {
-      const elapsed  = Date.now() - start
-      const progress = Math.min(elapsed / duration, 1)
-      const eased    = 1 - Math.pow(1 - progress, 3)
-      setDisplayed(Math.round(eased * pct))
-      if (progress < 1) requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-  }, [pct])
-
-  // Stop confetti after 3 seconds
-  useEffect(() => {
-    if (!showConfetti) return
-    const t = setTimeout(() => setShowConfetti(false), 3000)
-    return () => clearTimeout(t)
-  }, [showConfetti])
-
-  const firstName = (studentName ?? '').split(' ')[0] || 'there'
-  const ringColor = pct >= 80 ? '#2da44e' : pct >= 50 ? '#f5a623' : '#e5534b'
-  const heading   = pct >= 80 ? `Amazing work, ${firstName}!`
-                  : pct >= 50 ? `Well done, ${firstName}!`
-                  : `Keep going, ${firstName}! 💪`
-  const sub       = pct >= 80 ? `You scored ${pct}% — that's excellent! 🎉`
-                  : pct >= 50 ? `You scored ${pct}%. You're getting there! Let's see where you can improve.`
-                  : `You scored ${pct}%. Every attempt makes you stronger.`
-
-  const radius = 52
-  const circ   = 2 * Math.PI * radius
-  const offset = circ - (displayed / 100) * circ
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex items-center justify-center p-5">
-      {showConfetti && <Confetti />}
-
-      <div className="w-full max-w-sm flex flex-col items-center gap-6">
-
-        {/* Animated score ring */}
-        <div className="relative w-36 h-36 flex items-center justify-center">
-          <svg width="144" height="144" className="-rotate-90">
-            <circle cx="72" cy="72" r={radius} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="10" />
-            <circle
-              cx="72" cy="72" r={radius}
-              fill="none"
-              stroke={ringColor}
-              strokeWidth="10"
-              strokeDasharray={circ}
-              strokeDashoffset={offset}
-              strokeLinecap="round"
-              style={{ transition: 'stroke-dashoffset 0.05s' }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="font-display text-4xl font-bold text-white leading-none">{displayed}%</span>
-            <span className="text-white/50 text-xs mt-1">Score</span>
-          </div>
-        </div>
-
-        {/* Message */}
-        <div className="text-center">
-          <p className="text-xl font-bold text-white mb-1">{heading}</p>
-          <p className="text-white/70 text-sm leading-relaxed max-w-xs">{sub}</p>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 w-full">
-          {[
-            { val: correct,         label: 'Correct', color: 'text-success' },
-            { val: total - correct, label: 'Wrong',   color: 'text-danger'  },
-            { val: total,           label: 'Total',   color: 'text-white'   },
-          ].map((s) => (
-            <div key={s.label} className="bg-white/10 rounded-2xl py-4 text-center">
-              <p className={cn('font-display text-2xl font-bold', s.color)}>{s.val}</p>
-              <p className="text-xs text-white/50 mt-0.5">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Action */}
-        <div className="w-full">
-          <button
-            onClick={onReview}
-            className="w-full py-3.5 bg-white text-brand-900 font-bold rounded-2xl hover:bg-white/90 transition-colors"
-          >
-            Review My Answers →
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Review screen — question by question ───────────────────────────────────
-function ReviewScreen({ assessment, answers, onDone }) {
-  const questions = assessment.questions ?? []
-  const [idx, setIdx] = useState(0)
-  // Block copying on the review screen
-  useCopyProtection(true)
-  const q = questions[idx]
-  if (!q) return null
-
-  const sa  = answers[idx] ?? ''
-  const ok  = gradeAnswer(sa, q.answer, q.type ?? q.question_type)
-
-  return (
-    <div
-      className="min-h-screen bg-[#f7f7f5] flex flex-col"
-      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
-    >
-
-      {/* Top bar */}
-      <div className="bg-brand-900 px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
-        <button onClick={onDone} className="text-white/60 hover:text-white">
-          <ChevronLeft size={20} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-semibold text-sm truncate">Review — {assessment.title}</p>
-          <p className="text-white/40 text-xs">Question {idx + 1} of {questions.length}</p>
-        </div>
-        {/* Progress bar */}
-        <div className="w-24 flex-shrink-0">
-          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-amber rounded-full transition-all"
-              style={{ width: `${((idx + 1) / questions.length) * 100}%` }} />
-          </div>
-        </div>
-      </div>
-
-      {/* Question dots */}
-      <div className="flex gap-1.5 px-4 py-3 overflow-x-auto bg-white border-b border-border">
-        {questions.map((_, i) => {
-          const a   = answers[i] ?? ''
-          const cor = gradeAnswer(a, questions[i].answer, questions[i].type ?? questions[i].question_type)
+        {questions.map((ques, i) => {
+          const isAnswered = isCalcQ(ques)
+            ? calcFullyAnswered(answers[i], ques.answer_template)
+            : answers[i] !== undefined && answers[i] !== ''
           return (
-            <button key={i} onClick={() => setIdx(i)}
+            <button key={i} onClick={() => setCurrent(i)}
               className={cn(
                 'w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 transition-all border-2',
-                i === idx
-                  ? 'bg-brand-800 text-white border-brand-800 scale-110'
-                  : cor
-                  ? 'bg-success-light text-success border-success/30'
-                  : 'bg-danger-light text-danger border-danger/20'
+                i === current
+                  ? 'bg-brand-800 text-white border-brand-800'
+                  : isAnswered
+                  ? 'bg-green-50 text-green-600 border-green-300'
+                  : 'bg-surface text-ink-4 border-border'
               )}>
               {i + 1}
             </button>
@@ -1084,29 +902,167 @@ function ReviewScreen({ assessment, answers, onDone }) {
         })}
       </div>
 
-      {/* Main content — key forces full remount on question change (resets hint state) */}
-      <div key={idx} className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full flex flex-col gap-5">
-        <QuestionReviewCard
-          q={q}
-          idx={idx}
-          total={questions.length}
-          studentAnswer={sa}
-          isCorrect={ok}
-          subject={assessment.subject}
-        />
-        <ReviewNav
-          idx={idx}
-          total={questions.length}
-          onPrev={() => setIdx((i) => i - 1)}
-          onNext={() => setIdx((i) => i + 1)}
-          onDone={onDone}
-        />
+      {/* Question body — key forces full remount per question (resets hint open state) */}
+      <div key={current} className="flex-1 px-4 py-7 max-w-2xl mx-auto w-full">
+        <div className="flex flex-col gap-5">
+
+          {/* Question card */}
+          <div className="bg-white border border-border rounded-2xl px-5 py-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
+              Question {current + 1} of {questions.length}
+            </p>
+            <p className="text-lg font-semibold text-ink leading-relaxed">
+              <MathRenderer text={qText(q)} />
+            </p>
+          </div>
+
+          {/* Hint */}
+          <HintButton key={`test-hint-${current}`} hint={q.hint} />
+
+          {/* ── Answer input ──────────────────────────────────────────────────── */}
+          <div className="flex flex-col gap-3">
+
+            {/* Calculation */}
+            {isCalc && (
+              <div
+                className="bg-white border border-border rounded-2xl px-5 py-5"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text' }}
+              >
+                <p className="text-sm font-semibold text-ink-3 mb-5">Fill in your answer</p>
+                <MathAnswerInput
+                  template={q.answer_template}
+                  values={
+                    typeof answers[current] === 'object' && answers[current] !== null
+                      ? answers[current]
+                      : {}
+                  }
+                  onChange={handleCalcChange}
+                  readOnly={false}
+                />
+                {/* Contextual micro-instructions */}
+                {q.answer_template?.type === 'fraction' && (
+                  <p className="text-xs text-ink-4 mt-4">
+                    Enter the numerator (top number) and denominator (bottom number).
+                  </p>
+                )}
+                {q.answer_template?.type === 'simultaneous' && (
+                  <p className="text-xs text-ink-4 mt-4">
+                    Solve for each variable and enter the values in the boxes.
+                  </p>
+                )}
+                {q.answer_template?.type === 'two_roots' && (
+                  <p className="text-xs text-ink-4 mt-4">
+                    Enter both roots of the equation.
+                  </p>
+                )}
+                {q.answer_template?.type === 'scientific' && (
+                  <p className="text-xs text-ink-4 mt-4">
+                    Enter the coefficient and the power of 10.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* True / False */}
+            {!isCalc && isTF && (
+              <div className="grid grid-cols-2 gap-4">
+                {['True', 'False'].map((val) => {
+                  const sel = answers[current] === val
+                  return (
+                    <button key={val}
+                      onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
+                      className={cn(
+                        'flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 transition-all',
+                        sel
+                          ? val === 'True'
+                            ? 'border-green-400 bg-green-50 shadow-sm'
+                            : 'border-red-400 bg-red-50 shadow-sm'
+                          : 'border-border bg-white hover:border-brand-300'
+                      )}>
+                      {val === 'True'
+                        ? <CheckCircle2 size={32} className={sel ? 'text-green-500' : 'text-ink-4'} />
+                        : <XCircle      size={32} className={sel ? 'text-red-500'   : 'text-ink-4'} />
+                      }
+                      <span className={cn(
+                        'text-lg font-bold',
+                        sel ? (val === 'True' ? 'text-green-600' : 'text-red-600') : 'text-ink'
+                      )}>
+                        {val}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* MCQ */}
+            {!isCalc && !isTF && (
+              q.options?.map((opt, oi) => {
+                const letter = String.fromCharCode(65 + oi)
+                const sel    = answers[current] === letter
+                return (
+                  <button key={oi}
+                    onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
+                    className={cn(
+                      'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all',
+                      sel
+                        ? 'border-brand-600 bg-surface shadow-sm'
+                        : 'border-border bg-white hover:border-brand-300'
+                    )}>
+                    <span className={cn(
+                      'w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors',
+                      sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4'
+                    )}>
+                      {letter}
+                    </span>
+                    <span className={cn(
+                      'text-sm font-medium leading-relaxed flex-1',
+                      sel ? 'text-brand-800' : 'text-ink'
+                    )}>
+                      <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
+                    </span>
+                  </button>
+                )
+              })
+            )}
+
+          </div>
+
+          {/* Nav buttons */}
+          <div className="flex items-center justify-between pt-3">
+            <button
+              onClick={() => setCurrent((p) => Math.max(0, p - 1))}
+              disabled={current === 0}
+              className="px-5 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink disabled:opacity-40 hover:bg-surface transition-colors"
+            >
+              ← Previous
+            </button>
+            {current < questions.length - 1 ? (
+              <button
+                onClick={() => setCurrent((p) => p + 1)}
+                disabled={!hasAnswer}
+                className="px-5 py-2.5 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next →
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmitClick}
+                disabled={submitting}
+                className="px-7 py-2.5 rounded-xl bg-amber text-ink text-sm font-bold hover:bg-amber/90 disabled:opacity-60 transition-colors"
+              >
+                {submitting ? 'Submitting…' : `Submit (${answered}/${questions.length})`}
+              </button>
+            )}
+          </div>
+
+        </div>
       </div>
     </div>
   )
 }
 
-// ── Root component ─────────────────────────────────────────────────────────
+// ─── Root component ────────────────────────────────────────────────────────────
 export default function StudentAssessment({ assessment }) {
   const sessionKey = useRef(getSessionKey())
 
@@ -1114,24 +1070,32 @@ export default function StudentAssessment({ assessment }) {
   const [studentName, setStudentName] = useState('')
   const [answers,     setAnswers]     = useState({})
   const [result,      setResult]      = useState(null)
-  const [timedOut,    setTimedOut]    = useState(false)
+  const [timedOut,    setTimedOut]    = useState(false) // eslint-disable-line no-unused-vars
 
   const handleSubmit = useCallback(async (answersMap, timeTakenSecs) => {
     const questions = assessment.questions ?? []
-    const ansArr    = Array.from({ length: questions.length }, (_, i) => answersMap[i] ?? '')
+
+    // Client-side score calculation
     let correct = 0
     for (let i = 0; i < questions.length; i++) {
-      if (gradeAnswer(ansArr[i], questions[i].answer, questions[i].type ?? questions[i].question_type)) correct++
+      const q = questions[i]
+      const a = answersMap[i]
+      if (isCalcQ(q)) {
+        if (gradeCalc(a, q.answer_template)) correct++
+      } else {
+        if (gradeAnswer(a ?? '', q.answer, q.type ?? q.question_type)) correct++
+      }
     }
     const score = Math.round((correct / questions.length) * 100)
 
+    // Fire-and-forget — server re-scores for integrity; this is just for speed
     fetch('/api/submit', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
+      body: JSON.stringify({
         assessmentId:  assessment.id,
         studentName,
-        answers:       ansArr,
+        answers:       Array.from({ length: questions.length }, (_, i) => answersMap[i] ?? ''),
         score,
         total:         questions.length,
         sessionKey:    sessionKey.current,
@@ -1139,6 +1103,7 @@ export default function StudentAssessment({ assessment }) {
       }),
     }).catch(console.error)
 
+    // Persist to localStorage for past-attempt review
     saveToHistory({
       slug:        assessment.slug,
       title:       assessment.title,
@@ -1150,8 +1115,16 @@ export default function StudentAssessment({ assessment }) {
       completedAt: new Date().toISOString(),
       answers:     answersMap,
       questions:   questions.map((q) => ({
-        text: q.text, options: q.options, answer: q.answer,
-        hint: q.hint, explanation: q.explanation, type: q.type,
+        // Store both field names so qText() works on replay
+        text:            qText(q),
+        question_text:   qText(q),
+        options:         q.options,
+        answer:          q.answer,
+        hint:            q.hint,
+        explanation:     q.explanation,
+        type:            q.type,
+        question_type:   q.question_type,
+        answer_template: q.answer_template ?? null,
       })),
     })
 
@@ -1161,16 +1134,48 @@ export default function StudentAssessment({ assessment }) {
   }, [assessment, studentName])
 
   if (phase === 'start') {
-    return <StartScreen assessment={assessment} onStart={(n) => { setStudentName(n); setPhase('test') }} />
+    return (
+      <StartScreen
+        assessment={assessment}
+        onStart={(name) => { setStudentName(name); setPhase('test') }}
+      />
+    )
   }
+
   if (phase === 'test') {
-    return <TestScreen assessment={assessment} studentName={studentName} onSubmit={handleSubmit} timedOut={timedOut} />
+    return (
+      <QuestionScreen
+        assessment={assessment}
+        studentName={studentName}
+        answers={answers}
+        setAnswers={setAnswers}
+        onSubmit={handleSubmit}
+        timedOut={timedOut}
+      />
+    )
   }
+
   if (phase === 'result' && result) {
-    return <ResultScreen score={result.score} correct={result.correct} total={result.total} studentName={studentName} onReview={() => setPhase('review')} />
+    return (
+      <ResultScreen
+        score={result.score}
+        correct={result.correct}
+        total={result.total}
+        studentName={studentName}
+        onReview={() => setPhase('review')}
+      />
+    )
   }
+
   if (phase === 'review') {
-    return <ReviewScreen assessment={assessment} answers={answers} onDone={() => setPhase('result')} />
+    return (
+      <ReviewAllScreen
+        assessment={assessment}
+        answers={answers}
+        onDone={() => setPhase('result')}
+      />
+    )
   }
+
   return null
 }

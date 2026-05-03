@@ -9,9 +9,6 @@ import StepQuestions      from './StepQuestions'
 import StepShare          from './StepShare'
 import { cn } from '@/lib/utils'
 
-// Steps shown in the progress indicator (steps 1–3 are the existing flow).
-// Step 0 is the question-type picker — it acts as a pre-flight screen before
-// the numbered wizard begins and does not appear in the step indicator.
 const STEPS = [
   { number: 1, label: 'Setup'     },
   { number: 2, label: 'Questions' },
@@ -21,15 +18,10 @@ const STEPS = [
 export default function AssessmentWizard({ curriculum = 'uk' }) {
   const router = useRouter()
 
-  // step 0 = question type picker (new pre-flight screen)
-  // step 1 = Setup, step 2 = Questions, step 3 = Share (unchanged)
-  const [step, setStep] = useState(0)
-
-  // The selected question type — set on step 0, carried through the rest of the flow
+  const [step,           setStep]           = useState(0)
   const [questionType,   setQuestionType]   = useState(null)
   const [useCaseProfile, setUseCaseProfile] = useState('k12_tutor')
 
-  // Load use case profile once — needed by StepShare and InAppGeneration
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -38,7 +30,6 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
         .then(({ data }) => {
           if (data?.use_case_profile) {
             setUseCaseProfile(data.use_case_profile)
-            // Also store in setupData so StepQuestions can access it
             setSetupData((prev) => ({ ...prev, useCaseProfile: data.use_case_profile }))
           }
         })
@@ -46,24 +37,21 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   }, [])
 
   const [setupData, setSetupData] = useState({
-    subject:           '',
-    classLevel:        '',
-    assessmentType:    '',
-    title:             '',
-    questionMode:      'mcq',
-    curriculum:        '',
-    timerEnabled:      false,
-    timeLimitMins:     30,
-    participant_fields: null,  // null = use profile defaults; set when user customises
+    subject:            '',
+    classLevel:         '',
+    assessmentType:     '',
+    title:              '',
+    questionMode:       'mcq',
+    questionType:       null,   // the canonical type — set when tutor picks on step 0
+    curriculum:         '',
+    timerEnabled:       false,
+    timeLimitMins:      30,
+    participant_fields: null,
   })
 
   const [questions,      setQuestions]      = useState([])
   const [questionSource, setQuestionSource] = useState('manual')
-
-  // Track which question-entry mode the tutor was using (manual/bank/ai/generate).
-  // When they return from Step 3 (preview/share) back to Step 2, we restore this
-  // so they land on their question list, not the mode-picker screen.
-  const [questionMode, setQuestionMode] = useState(null)
+  const [questionMode,   setQuestionMode]   = useState(null)
 
   const updateSetup = (field, value) =>
     setSetupData((prev) => ({ ...prev, [field]: value }))
@@ -71,15 +59,20 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   // Called by StepQuestionType when the tutor picks a type
   const handleTypeSelect = (typeId) => {
     setQuestionType(typeId)
-    // Sync questionMode in setupData so downstream components know the type
-    updateSetup('questionMode', typeId === 'true_false' ? 'true_false' : 'mcq')
+    // Keep questionMode for legacy downstream consumers (MCQ / TF),
+    // and also store the canonical questionType so the server action can read it.
+    setSetupData((prev) => ({
+      ...prev,
+      questionMode: typeId === 'true_false' ? 'true_false' : 'mcq',
+      questionType: typeId,   // ← this is the fix — passes 'calculation' through
+    }))
     setStep(1)
   }
 
   return (
     <div className="max-w-2xl mx-auto">
 
-      {/* Step indicator — only visible once the wizard proper begins (step >= 1) */}
+      {/* Step indicator — only shown once wizard begins (step >= 1) */}
       {step >= 1 && (
         <div className="flex items-center gap-0 mb-10">
           {STEPS.map((s, i) => (
@@ -110,10 +103,8 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
         </div>
       )}
 
-      {/* Step content */}
       <div className="bg-white border border-border rounded-3xl p-8 shadow-card">
 
-        {/* Step 0 — Question type picker (pre-flight screen, not in step indicator) */}
         {step === 0 && (
           <StepQuestionType onSelect={handleTypeSelect} />
         )}
@@ -123,9 +114,9 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             data={setupData}
             onChange={updateSetup}
             onNext={() => setStep(2)}
-            onBack={() => setStep(0)}          // ← back returns to type picker
+            onBack={() => setStep(0)}
             accountCurriculum={curriculum}
-            questionType={questionType}         // passed for display / future use
+            questionType={questionType}
           />
         )}
 
@@ -134,10 +125,9 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             questions={questions}
             onChange={setQuestions}
             onSourceChange={(m) => { setQuestionMode(m); setQuestionSource(m) }}
-            // Restore the last mode used — so Back from Step 3 shows question list, not picker
             initialMode={questionMode}
             setupData={setupData}
-            questionType={questionType}             // ← threaded through
+            questionType={questionType}
             onNext={() => setStep(3)}
             onBack={() => { setStep(1) }}
           />

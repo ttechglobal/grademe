@@ -1,338 +1,530 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
-import { Trash2, Plus, ChevronDown, ChevronUp, CheckCircle2, XCircle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Trash2, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
 
-// ── True/False question card ───────────────────────────────────────────────
-function TrueFalseCard({ question, index, onChange, onRemove }) {
-  const [expanded, setExpanded] = useState(true)
+// ─── MCQ EDITOR ───────────────────────────────────────────────────────────────
+
+function MCQEditor({ question, index, onChange, onDelete }) {
+  const [expanded, setExpanded] = useState(true);
+
+  const updateOption = (optIndex, value) => {
+    const newOptions = [...(question.options || ['', '', '', ''])];
+    newOptions[optIndex] = value;
+    onChange({ ...question, options: newOptions });
+  };
+
+  const options = question.options || ['', '', '', ''];
+  const labels = ['A', 'B', 'C', 'D'];
 
   return (
-    <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
-
-      {/* Card header */}
-      <div
-        className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-surface transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-3">
-          <span className="w-7 h-7 rounded-full bg-amber-light text-amber text-xs font-bold flex items-center justify-center flex-shrink-0">
-            {index + 1}
-          </span>
-          <p className="text-sm font-medium text-ink truncate max-w-xs">
-            {question.text || <span className="text-ink-4 italic">Untitled statement</span>}
-          </p>
-        </div>
+    <div className="rounded-xl border border-border bg-white overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-surface border-b border-border">
+        <GripVertical className="h-4 w-4 text-ink-4 cursor-grab shrink-0" />
+        <span className="text-xs font-semibold text-brand-500 bg-brand-500/10 px-2 py-0.5 rounded">
+          Q{index + 1} · MCQ
+        </span>
+        <span className="flex-1 text-sm text-ink-3 truncate">
+          {question.question || 'Untitled question'}
+        </span>
         <div className="flex items-center gap-2">
           <button
-            onClick={(e) => { e.stopPropagation(); onRemove() }}
-            className="text-ink-4 hover:text-danger transition-colors p-1"
+            type="button"
+            onClick={onDelete}
+            className="p-1.5 rounded-lg text-ink-4 hover:text-red-500 hover:bg-red-50 transition-colors"
+            title="Delete question"
           >
-            <Trash2 size={15} />
+            <Trash2 className="h-4 w-4" />
           </button>
-          {expanded ? <ChevronUp size={16} className="text-ink-4" /> : <ChevronDown size={16} className="text-ink-4" />}
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="p-1.5 rounded-lg text-ink-4 hover:text-ink hover:bg-surface transition-colors"
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
         </div>
       </div>
 
       {expanded && (
-        <div className="px-5 pb-5 flex flex-col gap-4 border-t border-border">
-          {/* Statement */}
-          <div className="pt-4">
-            <Input
-              label="Statement"
-              placeholder="e.g. The mitochondria is the powerhouse of the cell."
-              value={question.text}
-              onChange={(e) => onChange('text', e.target.value)}
-            />
-            <p className="text-xs text-ink-4 mt-1.5 px-0.5">
-              Write a clear statement that is definitively true or false — avoid ambiguous statements.
-            </p>
-          </div>
-
-          {/* True / False toggle */}
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-ink-2">Correct Answer</label>
-            <div className="grid grid-cols-2 gap-3">
-              {['True', 'False'].map((val) => {
-                const isSelected = question.answer === val
-                return (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => onChange('answer', val)}
-                    className={cn(
-                      'flex items-center justify-center gap-2.5 py-4 rounded-2xl border-2 text-base font-bold transition-all',
-                      isSelected
-                        ? val === 'True'
-                          ? 'bg-success-light border-success text-success'
-                          : 'bg-danger-light border-danger text-danger'
-                        : 'bg-white border-border text-ink-3 hover:border-brand-300'
-                    )}
-                  >
-                    {val === 'True'
-                      ? <CheckCircle2 size={20} className={isSelected ? 'text-success' : 'text-ink-4'} />
-                      : <XCircle size={20} className={isSelected ? 'text-danger' : 'text-ink-4'} />
-                    }
-                    {val}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Explanation */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-semibold text-ink-2">
-              Explanation <span className="text-ink-4 font-normal">(shown to students after submission)</span>
-            </label>
+        <div className="p-4 space-y-4">
+          {/* Question text */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Question</label>
             <textarea
-              rows={3}
-              placeholder="Explain why the statement is true or false, with supporting details…"
-              value={question.explanation ?? ''}
-              onChange={(e) => onChange('explanation', e.target.value)}
-              className="w-full px-3 py-2.5 text-sm border-2 rounded-xl outline-none border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-100 resize-none"
+              value={question.question || ''}
+              onChange={(e) => onChange({ ...question, question: e.target.value })}
+              rows={2}
+              placeholder="Enter your question..."
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500 resize-none"
             />
           </div>
 
-          {/* Hint */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-ink-2">Hint (optional)</label>
-              <button
-                onClick={() => onChange('hint', question.hint ? '' : ' ')}
-                className={cn(
-                  'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
-                  question.hint
-                    ? 'bg-amber-light text-amber border-amber'
-                    : 'bg-surface text-ink-4 border-border hover:border-amber'
-                )}
-              >
-                {question.hint ? 'Hint on' : 'Add hint'}
-              </button>
-            </div>
-            {question.hint !== undefined && question.hint !== '' && (
-              <Input
-                placeholder="e.g. Think about where the cell gets its energy."
-                value={question.hint}
-                onChange={(e) => onChange('hint', e.target.value)}
-              />
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── MCQ question card (unchanged) ─────────────────────────────────────────
-function MCQCard({ question, index, onChange, onRemove }) {
-  const [expanded, setExpanded] = useState(true)
-
-  const updateOption = (i, value) => {
-    const options = [...question.options]
-    options[i] = value
-    onChange('options', options)
-  }
-
-  return (
-    <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
-
-      {/* Card header */}
-      <div
-        className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-surface transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-3">
-          <span className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
-            {index + 1}
-          </span>
-          <p className="text-sm font-medium text-ink truncate max-w-xs">
-            {question.text || <span className="text-ink-4 italic">Untitled question</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); onRemove() }}
-            className="text-ink-4 hover:text-danger transition-colors p-1"
-          >
-            <Trash2 size={15} />
-          </button>
-          {expanded ? <ChevronUp size={16} className="text-ink-4" /> : <ChevronDown size={16} className="text-ink-4" />}
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="px-5 pb-5 flex flex-col gap-4 border-t border-border">
-          <div className="pt-4">
-            <Input
-              label="Question"
-              placeholder="Type your question here..."
-              value={question.text}
-              onChange={(e) => onChange('text', e.target.value)}
-            />
-          </div>
-
-          {/* MCQ Options */}
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-semibold text-ink-2">Answer Options</label>
-            {question.options.map((opt, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-xs font-bold text-ink-4 flex-shrink-0">
-                  {String.fromCharCode(65 + i)}
-                </span>
+          {/* Options */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-ink-3">Options</label>
+            {labels.map((label, i) => (
+              <div key={label} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...question, correct_answer: label, answer: label })}
+                  className={cn(
+                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors',
+                    question.correct_answer === label
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-surface text-ink-3 hover:bg-brand-500/10 hover:text-brand-500 border border-border'
+                  )}
+                  title={`Mark ${label} as correct`}
+                >
+                  {label}
+                </button>
                 <input
                   type="text"
-                  placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                  value={opt}
+                  value={options[i] || ''}
                   onChange={(e) => updateOption(i, e.target.value)}
-                  className={cn(
-                    'flex-1 px-3 py-2 text-sm border rounded-xl outline-none',
-                    'border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-100',
-                    question.answer === String.fromCharCode(65 + i) && 'border-success bg-success-light'
-                  )}
+                  placeholder={`Option ${label}`}
+                  className="flex-1 rounded-lg border border-border bg-white px-3 py-1.5 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500"
                 />
-                <button
-                  onClick={() => onChange('answer', String.fromCharCode(65 + i))}
-                  className={cn(
-                    'text-xs px-3 py-2 rounded-xl border font-medium transition-colors',
-                    question.answer === String.fromCharCode(65 + i)
-                      ? 'bg-success-light text-success border-success'
-                      : 'bg-surface text-ink-4 border-border hover:border-brand-400'
-                  )}
-                >
-                  {question.answer === String.fromCharCode(65 + i) ? '✓ Correct' : 'Correct?'}
-                </button>
               </div>
             ))}
+            <p className="text-xs text-ink-4">Click a letter to mark it as the correct answer.</p>
           </div>
 
           {/* Explanation */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-semibold text-ink-2">
-              Explanation <span className="text-ink-4 font-normal">(shown to students after submission)</span>
-            </label>
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Explanation</label>
             <textarea
-              rows={3}
-              placeholder="Explain the correct answer step by step…"
-              value={question.explanation ?? ''}
-              onChange={(e) => onChange('explanation', e.target.value)}
-              className="w-full px-3 py-2.5 text-sm border-2 rounded-xl outline-none border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-100 resize-none"
+              value={question.explanation || ''}
+              onChange={(e) => onChange({ ...question, explanation: e.target.value })}
+              rows={2}
+              placeholder="Why is this the correct answer?"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500 resize-none"
             />
           </div>
 
           {/* Hint */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-ink-2">Hint (optional)</label>
-              <button
-                onClick={() => onChange('hint', question.hint ? '' : ' ')}
-                className={cn(
-                  'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
-                  question.hint
-                    ? 'bg-amber-light text-amber border-amber'
-                    : 'bg-surface text-ink-4 border-border hover:border-amber'
-                )}
-              >
-                {question.hint ? 'Hint on' : 'Add hint'}
-              </button>
-            </div>
-            {question.hint !== undefined && question.hint !== '' && (
-              <Input
-                placeholder="e.g. Substitute x = 5 directly into the equation"
-                value={question.hint}
-                onChange={(e) => onChange('hint', e.target.value)}
-              />
-            )}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Hint (optional)</label>
+            <input
+              type="text"
+              value={question.hint || ''}
+              onChange={(e) => onChange({ ...question, hint: e.target.value })}
+              placeholder="A clue for students who are stuck..."
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500"
+            />
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
-// ── Blank question factories ───────────────────────────────────────────────
-const blankMCQ = () => ({
-  type:        'mcq',
-  text:        '',
-  options:     ['', '', '', ''],
-  answer:      '',
-  hint:        '',
-  explanation: '',
-})
+// ─── TRUE/FALSE EDITOR ────────────────────────────────────────────────────────
 
-const blankTrueFalse = () => ({
-  type:          'truefalse',
-  question_type: 'true_false',
-  text:          '',
-  options:       [],
-  answer:        '',
-  hint:          '',
-  explanation:   '',
-})
-
-// ── Main editor — branched by questionType prop ───────────────────────────
-/**
- * @param {object[]} questions   - Current question list
- * @param {Function} onChange    - Setter for the full question list
- * @param {string}  questionType - 'mcq' | 'true_false'  (from wizard step 0)
- */
-export default function QuestionEditor({ questions, onChange, questionType = 'mcq' }) {
-  const isTrueFalse = questionType === 'true_false'
-
-  const addQuestion = () => {
-    onChange([...questions, isTrueFalse ? blankTrueFalse() : blankMCQ()])
-  }
-
-  const removeQuestion = (i) => {
-    onChange(questions.filter((_, idx) => idx !== i))
-  }
-
-  const updateQuestion = (i, field, value) => {
-    const updated = questions.map((q, idx) =>
-      idx === i ? { ...q, [field]: value } : q
-    )
-    onChange(updated)
-  }
+function TrueFalseEditor({ question, index, onChange, onDelete }) {
+  const [expanded, setExpanded] = useState(true);
 
   return (
-    <div className="flex flex-col gap-4">
-      {questions.length === 0 && (
-        <div className="text-center py-12 text-ink-4 text-sm bg-white border border-dashed border-border rounded-2xl">
-          No questions yet. Click the button below to add your first one.
+    <div className="rounded-xl border border-border bg-white overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-surface border-b border-border">
+        <GripVertical className="h-4 w-4 text-ink-4 cursor-grab shrink-0" />
+        <span className="text-xs font-semibold text-brand-500 bg-brand-500/10 px-2 py-0.5 rounded">
+          Q{index + 1} · T/F
+        </span>
+        <span className="flex-1 text-sm text-ink-3 truncate">
+          {question.question || 'Untitled statement'}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="p-1.5 rounded-lg text-ink-4 hover:text-red-500 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="p-1.5 rounded-lg text-ink-4 hover:text-ink hover:bg-surface transition-colors"
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="p-4 space-y-4">
+          {/* Statement */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Statement</label>
+            <textarea
+              value={question.question || ''}
+              onChange={(e) => onChange({ ...question, question: e.target.value })}
+              rows={2}
+              placeholder="Enter a true or false statement..."
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500 resize-none"
+            />
+          </div>
+
+          {/* Correct answer */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-2">Correct Answer</label>
+            <div className="flex gap-3">
+              {['True', 'False'].map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => onChange({ ...question, correct_answer: val, answer: val })}
+                  className={cn(
+                    'flex-1 rounded-lg border py-2 text-sm font-semibold transition-colors',
+                    question.correct_answer === val
+                      ? val === 'True'
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : 'bg-red-500 border-red-500 text-white'
+                      : 'border-border bg-white text-ink-3 hover:border-brand-500 hover:text-brand-500'
+                  )}
+                >
+                  {val}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Explanation */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Explanation</label>
+            <textarea
+              value={question.explanation || ''}
+              onChange={(e) => onChange({ ...question, explanation: e.target.value })}
+              rows={2}
+              placeholder="Why is this statement true or false?"
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500 resize-none"
+            />
+          </div>
+
+          {/* Hint */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Hint (optional)</label>
+            <input
+              type="text"
+              value={question.hint || ''}
+              onChange={(e) => onChange({ ...question, hint: e.target.value })}
+              placeholder="A clue for students..."
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500"
+            />
+          </div>
         </div>
       )}
-
-      {questions.map((q, i) => {
-        const isQTrueFalse = q.type === 'truefalse' || q.question_type === 'true_false' || isTrueFalse
-        return isQTrueFalse ? (
-          <TrueFalseCard
-            key={i}
-            index={i}
-            question={q}
-            onChange={(field, value) => updateQuestion(i, field, value)}
-            onRemove={() => removeQuestion(i)}
-          />
-        ) : (
-          <MCQCard
-            key={i}
-            index={i}
-            question={q}
-            onChange={(field, value) => updateQuestion(i, field, value)}
-            onRemove={() => removeQuestion(i)}
-          />
-        )
-      })}
-
-      <button
-        onClick={addQuestion}
-        className="flex items-center justify-center gap-2 py-4 border-2 border-dashed border-brand-200 rounded-2xl text-brand-500 text-sm font-semibold hover:border-brand-400 hover:bg-brand-50 transition-colors"
-      >
-        <Plus size={16} />
-        Add {isTrueFalse ? 'True/False Statement' : 'Question'}
-      </button>
     </div>
-  )
+  );
+}
+
+// ─── CALCULATION ANSWER PREVIEW ───────────────────────────────────────────────
+// Read-only preview of what the student will see
+
+function AnswerTemplatePreview({ template }) {
+  if (!template) return null;
+
+  const { type, structure = [], unit } = template;
+
+  const boxClass =
+    'inline-flex items-center justify-center min-w-[3rem] min-h-[2.5rem] px-2 rounded-lg border-2 border-brand-500 bg-brand-500/5 text-brand-500 font-bold text-sm';
+
+  const labelClass = 'text-xs font-semibold text-ink-3 mr-1';
+
+  const renderBox = (item) => (
+    <span key={item.id} className="inline-flex items-center gap-1">
+      {item.label && item.label !== 'Answer' && (
+        <span className={labelClass}>{item.label} =</span>
+      )}
+      <span className={boxClass}>{item.answer}</span>
+    </span>
+  );
+
+  if (type === 'fraction') {
+    const num = structure.find((s) => s.id === 'num') || structure[0];
+    const den = structure.find((s) => s.id === 'den') || structure[1];
+    return (
+      <div className="inline-flex flex-col items-center gap-0.5">
+        <span className={boxClass}>{num?.answer}</span>
+        <div className="w-full h-px bg-brand-500" />
+        <span className={boxClass}>{den?.answer}</span>
+      </div>
+    );
+  }
+
+  if (type === 'power') {
+    const base = structure[0];
+    const exp = structure[1];
+    return (
+      <div className="inline-flex items-start gap-0.5">
+        <span className={boxClass}>{base?.answer}</span>
+        <sup>
+          <span className={cn(boxClass, 'text-xs min-w-[1.75rem] min-h-[1.75rem]')}>
+            {exp?.answer}
+          </span>
+        </sup>
+      </div>
+    );
+  }
+
+  if (type === 'scientific') {
+    const coeff = structure[0];
+    const exp = structure[1];
+    return (
+      <div className="inline-flex items-center gap-1">
+        <span className={boxClass}>{coeff?.answer}</span>
+        <span className="text-sm font-semibold text-ink">× 10</span>
+        <sup>
+          <span className={cn(boxClass, 'text-xs min-w-[1.75rem] min-h-[1.75rem]')}>
+            {exp?.answer}
+          </span>
+        </sup>
+      </div>
+    );
+  }
+
+  if (type === 'surd') {
+    const coeff = structure[0];
+    const rad = structure[1];
+    return (
+      <div className="inline-flex items-center gap-1">
+        <span className={boxClass}>{coeff?.answer}</span>
+        <span className="text-sm font-semibold text-ink">√</span>
+        <span className={boxClass}>{rad?.answer}</span>
+      </div>
+    );
+  }
+
+  if (type === 'coordinates') {
+    const x = structure[0];
+    const y = structure[1];
+    return (
+      <div className="inline-flex items-center gap-1">
+        <span className="text-ink font-semibold">(</span>
+        <span className={boxClass}>{x?.answer}</span>
+        <span className="text-ink font-semibold">,</span>
+        <span className={boxClass}>{y?.answer}</span>
+        <span className="text-ink font-semibold">)</span>
+      </div>
+    );
+  }
+
+  if (type === 'percentage') {
+    const item = structure[0];
+    return (
+      <div className="inline-flex items-center gap-1">
+        <span className={boxClass}>{item?.answer}</span>
+        <span className="text-ink font-semibold">%</span>
+      </div>
+    );
+  }
+
+  if (type === 'angle') {
+    const item = structure[0];
+    return (
+      <div className="inline-flex items-center gap-1">
+        <span className={boxClass}>{item?.answer}</span>
+        <span className="text-ink font-semibold">°</span>
+      </div>
+    );
+  }
+
+  if (type === 'units') {
+    const item = structure[0];
+    return (
+      <div className="inline-flex items-center gap-1">
+        <span className={boxClass}>{item?.answer}</span>
+        <span className="text-ink-3 text-sm font-semibold">{unit}</span>
+      </div>
+    );
+  }
+
+  if (type === 'ratio') {
+    return (
+      <div className="inline-flex items-center gap-1">
+        {structure.map((item, i) => (
+          <span key={item.id} className="inline-flex items-center gap-1">
+            {i > 0 && <span className="text-ink font-semibold">:</span>}
+            <span className={boxClass}>{item.answer}</span>
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  // Default: simultaneous, two_roots, number, decimal — label + box
+  return (
+    <div className="inline-flex flex-wrap gap-3">
+      {structure.map((item) => renderBox(item))}
+    </div>
+  );
+}
+
+// ─── CALCULATION EDITOR ───────────────────────────────────────────────────────
+
+function CalculationEditor({ question, index, onChange, onDelete }) {
+  const [expanded, setExpanded] = useState(true);
+  const template = question.answer_template;
+
+  return (
+    <div className="rounded-xl border border-border bg-white overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-surface border-b border-border">
+        <GripVertical className="h-4 w-4 text-ink-4 cursor-grab shrink-0" />
+        <span className="text-xs font-semibold text-brand-500 bg-brand-500/10 px-2 py-0.5 rounded">
+          Q{index + 1} · Calc
+        </span>
+        <span className="flex-1 text-sm text-ink-3 truncate">
+          {question.question || 'Untitled calculation'}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onDelete}
+            className="p-1.5 rounded-lg text-ink-4 hover:text-red-500 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="p-1.5 rounded-lg text-ink-4 hover:text-ink hover:bg-surface transition-colors"
+          >
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="p-4 space-y-4">
+          {/* Question text */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Question</label>
+            <textarea
+              value={question.question || ''}
+              onChange={(e) => onChange({ ...question, question: e.target.value })}
+              rows={2}
+              placeholder="Enter the calculation question..."
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500 resize-none"
+            />
+          </div>
+
+          {/* Answer template preview */}
+          {template ? (
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <p className="text-xs font-semibold text-ink-3 mb-3">
+                Answer Template Preview
+                <span className="ml-2 text-ink-4 font-normal">(AI-generated · read-only)</span>
+              </p>
+
+              {/* Visual preview */}
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xs text-ink-4">Student will see:</span>
+                <AnswerTemplatePreview template={template} />
+              </div>
+
+              {/* Correct answers list */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-ink-3">Correct Answers</p>
+                {template.structure?.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2">
+                    <span className="text-xs text-ink-4 w-20 shrink-0">
+                      {item.label}:
+                    </span>
+                    <span className="text-sm font-bold text-ink">{item.answer}</span>
+                    <span className="text-xs text-ink-4">
+                      (also accepts: {item.accepted?.filter((a) => a !== item.answer).join(', ') || '—'})
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-ink-4 mt-3">
+                Template type: <strong className="text-ink-3">{template.type}</strong>
+                {template.unit ? ` · Unit: ${template.unit}` : ''}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border bg-surface p-4 text-center">
+              <p className="text-sm text-ink-4">
+                No answer template yet. Generate this question with AI to get a structured answer template.
+              </p>
+            </div>
+          )}
+
+          {/* Explanation */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">
+              Step-by-step Explanation
+            </label>
+            <textarea
+              value={question.explanation || ''}
+              onChange={(e) => onChange({ ...question, explanation: e.target.value })}
+              rows={3}
+              placeholder="Show the full working step by step..."
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500 resize-none"
+            />
+          </div>
+
+          {/* Hint */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-3 mb-1">Hint (optional)</label>
+            <input
+              type="text"
+              value={question.hint || ''}
+              onChange={(e) => onChange({ ...question, hint: e.target.value })}
+              placeholder="A clue without giving away the answer..."
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-4 focus:outline-none focus:border-brand-500"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MAIN EXPORT ─────────────────────────────────────────────────────────────
+
+/**
+ * QuestionEditor — renders the correct editor based on question_type.
+ * Supports: mcq, true_false, calculation.
+ */
+export default function QuestionEditor({ question, index, onChange, onDelete }) {
+  const type = question?.question_type || question?.type;
+
+  if (type === 'calculation') {
+    return (
+      <CalculationEditor
+        question={question}
+        index={index}
+        onChange={onChange}
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  if (type === 'true_false' || type === 'truefalse') {
+    return (
+      <TrueFalseEditor
+        question={question}
+        index={index}
+        onChange={onChange}
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  // Default: MCQ
+  return (
+    <MCQEditor
+      question={question}
+      index={index}
+      onChange={onChange}
+      onDelete={onDelete}
+    />
+  );
 }

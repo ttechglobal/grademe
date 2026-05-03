@@ -2,12 +2,6 @@ import { createClient }    from '@/lib/supabase/server'
 import StudentAssessment   from '@/components/student/StudentAssessment'
 import PreviewMode         from '@/components/student/PreviewMode'
 
-/**
- * /t/[slug] — student assessment page
- *
- * ?preview=1  → renders PreviewMode (teacher view, answers revealed, nothing recorded)
- * normal      → renders StudentAssessment (student view, submits to DB)
- */
 export default async function StudentTestPage({ params, searchParams }) {
   const { slug }  = await params
   const sp        = await searchParams
@@ -20,7 +14,8 @@ export default async function StudentTestPage({ params, searchParams }) {
     .select(`
       *,
       questions (
-        id, type, question_type, text, options, answer, hint, explanation, order_index
+        id, type, question_type, text, options, answer,
+        hint, explanation, order_index, answer_template
       )
     `)
     .eq('slug', slug)
@@ -34,28 +29,18 @@ export default async function StudentTestPage({ params, searchParams }) {
     return <UnavailableScreen message="This assessment is no longer available. Contact your tutor." />
   }
 
-  // Sort questions by order_index
   assessment.questions = [...(assessment.questions ?? [])].sort(
     (a, b) => a.order_index - b.order_index
   )
 
-  // Defensively normalise question_type on every question.
-  // Older rows may have type='truefalse' but question_type='mcq' (default from migration).
-  // The DB default filled 'mcq' for pre-migration T/F rows — fix that here.
-  assessment.questions = assessment.questions.map((q) => ({
-    ...q,
-    question_type:
-      q.type === 'truefalse' || q.type === 'true_false'
-        ? 'true_false'
-        : q.question_type ?? 'mcq',
-  }))
+  // Normalise question_type defensively
+  assessment.questions = assessment.questions.map((q) => {
+    if (q.type === 'calculation')                          return { ...q, question_type: 'calculation' }
+    if (q.type === 'truefalse' || q.type === 'true_false') return { ...q, question_type: 'true_false' }
+    return { ...q, question_type: q.question_type ?? 'mcq' }
+  })
 
-  // Preview mode — show answers, explanations, no submission
-  if (isPreview) {
-    return <PreviewMode assessment={assessment} />
-  }
-
-  // Student mode — normal assessment flow
+  if (isPreview) return <PreviewMode assessment={assessment} />
   return <StudentAssessment assessment={assessment} />
 }
 

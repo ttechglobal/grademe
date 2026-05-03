@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import Button from '@/components/ui/Button'
-import MathRenderer from '@/components/ui/MathRenderer'
+import Button        from '@/components/ui/Button'
+import MathRenderer  from '@/components/ui/MathRenderer'
+import MathAnswerInput from '@/components/student/MathAnswerInput'
 import { cn } from '@/lib/utils'
 import { Lightbulb } from 'lucide-react'
 
@@ -34,10 +35,37 @@ function MCQOption({ letter, text, selected, onClick }) {
   )
 }
 
+// ── Detect question type helpers ───────────────────────────────────────────
+function isCalcQ(q) {
+  return q?.type === 'calculation' || q?.question_type === 'calculation'
+}
+function isTFQ(q) {
+  return q?.type === 'truefalse' || q?.type === 'true_false' || q?.question_type === 'true_false'
+}
+
+// ── Grade a calculation answer client-side ─────────────────────────────────
+function gradeCalc(boxValues, template) {
+  if (!template?.structure?.length) return false
+  const vals = typeof boxValues === 'object' && boxValues ? boxValues : {}
+  return template.structure.every((item) => {
+    const student  = (vals[item.id] ?? '').trim().toLowerCase()
+    const accepted = (item.accepted ?? [item.answer]).map(a => String(a).trim().toLowerCase())
+    return accepted.includes(student)
+  })
+}
+
+// ── Check if a calculation question has all boxes filled ───────────────────
+function calcIsAnswered(boxValues, template) {
+  if (!template?.structure?.length) return false
+  const vals = typeof boxValues === 'object' && boxValues ? boxValues : {}
+  return template.structure.every((item) => (vals[item.id] ?? '').trim().length > 0)
+}
+
 export default function TestScreen({ assessment, studentName, onFinish }) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers,      setAnswers]      = useState({})
   const [showHint,     setShowHint]     = useState(false)
+  // fillValue is used for the legacy 'fill' questionMode only
   const [fillValue,    setFillValue]    = useState('')
 
   const questions    = assessment.questions
@@ -47,48 +75,73 @@ export default function TestScreen({ assessment, studentName, onFinish }) {
   const selected     = answers[currentIndex]
   const progress     = Math.round((currentIndex / questions.length) * 100)
 
+  const isCurrentCalc = isCalcQ(current)
+  const isCurrentTF   = isTFQ(current)
+
+  // canContinue: is the current question answered enough to move forward?
+  let canContinue
+  if (isCurrentCalc) {
+    canContinue = calcIsAnswered(answers[currentIndex], current?.answer_template)
+  } else if (questionMode === 'fill') {
+    canContinue = fillValue.trim().length > 0 || (answers[currentIndex] ?? '').length > 0
+  } else {
+    canContinue = !!selected
+  }
+
   const selectAnswer = (answer) => {
     setAnswers((prev) => ({ ...prev, [currentIndex]: answer }))
   }
 
+  // Update a single box inside a calculation answer
+  const updateCalcBox = (boxId, val) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [currentIndex]: {
+        ...(typeof prev[currentIndex] === 'object' && prev[currentIndex] ? prev[currentIndex] : {}),
+        [boxId]: val,
+      },
+    }))
+  }
+
   const goNext = () => {
     const updatedAnswers = { ...answers }
-    if (questionMode === 'fill' && fillValue.trim()) {
+    // Persist legacy fill value
+    if (questionMode === 'fill' && !isCurrentCalc && fillValue.trim()) {
       updatedAnswers[currentIndex] = fillValue.trim()
       setAnswers(updatedAnswers)
     }
     setShowHint(false)
 
     if (isLast) {
-      const finalAnswers = { ...updatedAnswers }
-      onFinish(finalAnswers)
+      onFinish(updatedAnswers)
     } else {
-      const nextVal = updatedAnswers[currentIndex + 1] ?? ''
-      setFillValue(nextVal)
+      // Restore fill value for next question (legacy fill mode)
+      const nextVal = updatedAnswers[currentIndex + 1]
+      if (questionMode === 'fill') {
+        setFillValue(typeof nextVal === 'string' ? nextVal : '')
+      }
       setCurrentIndex((i) => i + 1)
     }
   }
 
   const goPrev = () => {
     const updatedAnswers = { ...answers }
-    if (questionMode === 'fill' && fillValue.trim()) {
+    if (questionMode === 'fill' && !isCurrentCalc && fillValue.trim()) {
       updatedAnswers[currentIndex] = fillValue.trim()
       setAnswers(updatedAnswers)
     }
     setShowHint(false)
-    const prevVal = updatedAnswers[currentIndex - 1] ?? ''
-    setFillValue(prevVal)
+    const prevVal = updatedAnswers[currentIndex - 1]
+    if (questionMode === 'fill') {
+      setFillValue(typeof prevVal === 'string' ? prevVal : '')
+    }
     setCurrentIndex((i) => i - 1)
   }
-
-  const canContinue = questionMode === 'fill'
-    ? fillValue.trim().length > 0 || (answers[currentIndex] ?? '').length > 0
-    : !!selected
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
 
-      {/* GradeMee brand bar */}
+      {/* Brand bar */}
       <div className="bg-brand-900 px-5 py-2.5 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-md bg-amber flex items-center justify-center">
@@ -114,7 +167,9 @@ export default function TestScreen({ assessment, studentName, onFinish }) {
                 {currentIndex + 1} / {questions.length}
               </span>
               <p className="text-xs text-ink-4 mt-0.5">
-                {questionMode === 'mcq' ? '🔘 Multiple Choice' : '✏️ Fill in'}
+                {isCurrentCalc   ? '🔢 Fill in the Answer' :
+                 isCurrentTF     ? '✅ True or False'       :
+                 questionMode === 'fill' ? '✏️ Fill in'     : '🔘 Multiple Choice'}
               </p>
             </div>
           </div>
@@ -159,8 +214,54 @@ export default function TestScreen({ assessment, studentName, onFinish }) {
             )}
           </div>
 
+          {/* ── Answer input — branched by question type ───────────────── */}
+
+          {/* Calculation — structured fill-in boxes */}
+          {isCurrentCalc && (
+            <div className="bg-white border border-border rounded-2xl p-6 shadow-card">
+              <p className="text-sm font-semibold text-ink-3 mb-4">Fill in your answer</p>
+              <MathAnswerInput
+                template={current.answer_template}
+                value={typeof answers[currentIndex] === 'object' ? answers[currentIndex] : {}}
+                onChange={updateCalcBox}
+                readOnly={false}
+              />
+            </div>
+          )}
+
+          {/* True / False */}
+          {!isCurrentCalc && isCurrentTF && (
+            <div className="grid grid-cols-2 gap-3">
+              {['True', 'False'].map((val) => {
+                const sel = selected === val
+                return (
+                  <button
+                    key={val}
+                    onClick={() => selectAnswer(val)}
+                    className={cn(
+                      'flex flex-col items-center justify-center gap-2 py-7 rounded-2xl border-2 transition-all',
+                      sel
+                        ? val === 'True'
+                          ? 'border-success bg-success-light'
+                          : 'border-danger bg-danger-light'
+                        : 'border-border bg-white hover:border-brand-300'
+                    )}
+                  >
+                    <span className="text-3xl">{val === 'True' ? '✅' : '❌'}</span>
+                    <span className={cn(
+                      'text-lg font-bold',
+                      sel ? (val === 'True' ? 'text-success' : 'text-danger') : 'text-ink'
+                    )}>
+                      {val}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           {/* MCQ */}
-          {questionMode === 'mcq' && (
+          {!isCurrentCalc && !isCurrentTF && questionMode === 'mcq' && (
             <div className="flex flex-col gap-3">
               {current.options?.map((opt, i) => {
                 const letter    = String.fromCharCode(65 + i)
@@ -179,12 +280,10 @@ export default function TestScreen({ assessment, studentName, onFinish }) {
             </div>
           )}
 
-          {/* Fill-in */}
-          {questionMode === 'fill' && (
+          {/* Fill-in (legacy questionMode) */}
+          {!isCurrentCalc && !isCurrentTF && questionMode === 'fill' && (
             <div className="flex flex-col gap-2">
-              <label className="text-base font-medium text-ink-2">
-                Your answer:
-              </label>
+              <label className="text-base font-medium text-ink-2">Your answer:</label>
               <input
                 type="text"
                 value={fillValue}

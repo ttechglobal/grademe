@@ -3,18 +3,16 @@
 /**
  * src/lib/actions/assessments.js
  *
- * MIGRATION REQUIRED — run this SQL in Supabase before deploying:
+ * MIGRATIONS REQUIRED — run in Supabase SQL editor:
+ *
+ *   ALTER TABLE public.questions
+ *     ADD COLUMN IF NOT EXISTS answer_template JSONB;
  *
  *   ALTER TABLE public.assessments
- *     ADD COLUMN IF NOT EXISTS curriculum      TEXT    DEFAULT NULL,
- *     ADD COLUMN IF NOT EXISTS assessment_type TEXT    DEFAULT 'quiz';
+ *     ADD COLUMN IF NOT EXISTS curriculum      TEXT DEFAULT NULL,
+ *     ADD COLUMN IF NOT EXISTS assessment_type TEXT DEFAULT 'quiz';
  *
- * Once the columns exist, the schema cache may need refreshing:
- *   Supabase Dashboard → Settings → API → Reload schema
- *   (or restart the serverless function / redeploy)
- *
- * Existing assessments without these columns will NOT break — both
- * columns have DEFAULT NULL / DEFAULT 'quiz' so old rows are unaffected.
+ * Then: Supabase Dashboard → Settings → API → Reload schema
  */
 
 import { createClient } from '@/lib/supabase/server'
@@ -36,10 +34,6 @@ export async function createAssessment(setupData, questions, settings, source = 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) redirect('/login')
 
-  // Auto-title priority:
-  //   1. topic field (most specific — e.g. "Fractions" → "Fractions Quiz")
-  //   2. subject + assessmentType (e.g. "Mathematics Quiz")
-  //   3. "Assessment" as last resort
   const topic      = (setupData.topic || setupData.title || '').trim()
   const subjectStr = setupData.subject?.replace(/_/g, ' ') ?? ''
   const typeStr    = setupData.assessmentType ?? ''
@@ -50,42 +44,42 @@ export async function createAssessment(setupData, questions, settings, source = 
 
   const slug = generateSlug(setupData.title || autoTitle)
 
-  // ── Core insert — only columns that are guaranteed to exist ───────────
+  // ── Resolve the canonical question type ───────────────────────────────
+  // setupData.questionType is set by AssessmentWizard (new field).
+  // setupData.questionMode is the legacy field — still 'mcq' for calculation.
+  // Always prefer questionType when present.
+  const resolvedQuestionType = (() => {
+    const qt = setupData.questionType || setupData.questionMode || 'mcq'
+    if (qt === 'true_false') return 'true_false'
+    if (qt === 'calculation') return 'calculation'
+    return 'mcq'
+  })()
+
+  // ── Core assessment insert ─────────────────────────────────────────────
   const coreInsert = {
-    teacher_id:      user.id,
-    title:           setupData.title || autoTitle,
-    subject:         setupData.subject,
-    class_level:     setupData.classLevel,
-    topic:           setupData.title || autoTitle,
+    teacher_id:        user.id,
+    title:             setupData.title || autoTitle,
+    subject:           setupData.subject,
+    class_level:       setupData.classLevel,
+    topic:             setupData.title || autoTitle,
     slug,
-    question_mode:   setupData.questionMode || 'mcq',
-    show_results:    true,
+    question_mode:     setupData.questionMode || 'mcq',
+    question_type:     resolvedQuestionType,
+    show_results:      true,
     show_explanations: true,
-    require_name:    true,
-    is_active:       true,
+    require_name:      true,
+    is_active:         true,
   }
 
-  // Timer — only set if enabled
   if (setupData.timerEnabled && setupData.timeLimitMins) {
     coreInsert.time_limit_mins = setupData.timeLimitMins
   }
-
-  // ── Optional extended columns — added via migration ───────────────────
-  // These are added safely so the insert succeeds even if the migration
-  // hasn't been run yet (Supabase will ignore unknown keys only if using
-  // the JS client with the correct schema — if schema cache is stale,
-  // remove these until the migration is applied and cache is refreshed).
   if (setupData.curriculum) {
     coreInsert.curriculum = setupData.curriculum
   }
   if (setupData.assessmentType) {
     coreInsert.assessment_type = setupData.assessmentType
   }
-  // question_type — 'mcq' | 'true_false' — the type selected on step 0
-  if (setupData.questionMode) {
-    coreInsert.question_type = setupData.questionMode === 'true_false' ? 'true_false' : 'mcq'
-  }
-  // participant_fields — custom intake fields; null means use platform defaults
   if (setupData.participant_fields !== undefined && setupData.participant_fields !== null) {
     coreInsert.participant_fields = setupData.participant_fields
   }
@@ -97,9 +91,7 @@ export async function createAssessment(setupData, questions, settings, source = 
     .single()
 
   if (assessmentError) {
-    console.error('[createAssessment] error:', assessmentError)
-
-    // If the error is about a missing column, return a clear message
+    console.error('[createAssessment] assessment error:', assessmentError)
     if (
       assessmentError.message?.includes('curriculum') ||
       assessmentError.message?.includes('assessment_type') ||
@@ -113,26 +105,44 @@ export async function createAssessment(setupData, questions, settings, source = 
           'Then refresh the Supabase schema cache.',
       }
     }
-
     return { error: assessmentError.message }
   }
 
-  // ── Insert questions linked to this assessment ─────────────────────────
-  const questionsToInsert = questions.map((q, index) => ({
-    assessment_id:  assessment.id,
-    teacher_id:     user.id,
-    type:           q.type          || 'mcq',
-    question_type:  q.question_type || (q.type === 'truefalse' ? 'true_false' : 'mcq'),
-    text:           q.text,
-    options:        Array.isArray(q.options) ? q.options : [],
-    answer:         q.answer,
-    hint:           q.hint          ?? '',
-    explanation:    q.explanation   ?? '',
-    order_index:    index,
-    subject:        setupData.subject,
-    class_level:    setupData.classLevel,
-    topic:          setupData.title || autoTitle,
-  }))
+  // ── Build question rows ────────────────────────────────────────────────
+  const questionsToInsert = questions.map((q, index) => {
+    const qType  = q.question_type || q.type || 'mcq'
+    const isCalc = qType === 'calculation'
+    const isTF   = qType === 'true_false' || qType === 'truefalse'
+
+    // Calculation questions have no single-answer string.
+    // Store '' to satisfy the NOT NULL constraint on the `answer` column.
+    // The real answers live in answer_template.structure[].answer
+    const answerValue = isCalc ? '' : (q.answer ?? q.correct_answer ?? '')
+
+    const row = {
+      assessment_id: assessment.id,
+      teacher_id:    user.id,
+      type:          isCalc ? 'calculation' : (isTF ? 'truefalse' : 'mcq'),
+      question_type: isCalc ? 'calculation' : (isTF ? 'true_false' : 'mcq'),
+      text:          q.text || q.question || q.question_text || '',
+      options:       Array.isArray(q.options) ? q.options : [],
+      answer:        answerValue,
+      hint:          q.hint        ?? '',
+      explanation:   q.explanation ?? '',
+      order_index:   index,
+      subject:       setupData.subject,
+      class_level:   setupData.classLevel,
+      topic:         setupData.title || autoTitle,
+    }
+
+    // Only set answer_template for calculation questions — leave it out
+    // entirely for MCQ/TF so we don't require the column to exist yet.
+    if (isCalc && q.answer_template) {
+      row.answer_template = q.answer_template
+    }
+
+    return row
+  })
 
   const { error: questionsError } = await supabase
     .from('questions')
@@ -140,25 +150,40 @@ export async function createAssessment(setupData, questions, settings, source = 
 
   if (questionsError) {
     console.error('[createAssessment] questions error:', questionsError)
+    if (questionsError.message?.includes('answer_template')) {
+      return {
+        error:
+          'Database migration required. Please run:\n' +
+          'ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS answer_template JSONB;\n' +
+          'Then refresh the Supabase schema cache.',
+      }
+    }
     return { error: questionsError.message }
   }
 
-  // ── Also save to question bank for manual/AI sources ───────────────────
-  if (source === 'manual' || source === 'ai' || source === 'generate') {
-    const bankQuestions = questions.map((q) => ({
-      assessment_id:  null,
-      teacher_id:     user.id,
-      type:           q.type          || 'mcq',
-      question_type:  q.question_type || (q.type === 'truefalse' ? 'true_false' : 'mcq'),
-      text:           q.text,
-      options:        Array.isArray(q.options) ? q.options : [],
-      answer:         q.answer,
-      hint:           q.hint          ?? '',
-      explanation:    q.explanation   ?? '',
-      subject:        setupData.subject,
-      class_level:    setupData.classLevel,
-      topic:          setupData.title || autoTitle,
-    }))
+  // ── Save to question bank (MCQ and True/False only) ────────────────────
+  // Calculation questions are excluded — the bank only supports MCQ/TF.
+  if (
+    resolvedQuestionType !== 'calculation' &&
+    (source === 'manual' || source === 'ai' || source === 'generate')
+  ) {
+    const bankQuestions = questions.map((q) => {
+      const isTF = q.question_type === 'true_false' || q.type === 'truefalse'
+      return {
+        assessment_id: null,
+        teacher_id:    user.id,
+        type:          isTF ? 'truefalse' : 'mcq',
+        question_type: isTF ? 'true_false' : 'mcq',
+        text:          q.text || q.question || '',
+        options:       Array.isArray(q.options) ? q.options : [],
+        answer:        q.answer ?? q.correct_answer ?? '',
+        hint:          q.hint        ?? '',
+        explanation:   q.explanation ?? '',
+        subject:       setupData.subject,
+        class_level:   setupData.classLevel,
+        topic:         setupData.title || autoTitle,
+      }
+    })
 
     supabase.from('questions').insert(bankQuestions).then(({ error }) => {
       if (error) console.warn('[createAssessment] bank save:', error.message)

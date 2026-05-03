@@ -3,12 +3,10 @@
 import { useState } from 'react'
 import { parseAIResponse } from '@/lib/parseAIResponse'
 import MathRenderer from '@/components/ui/MathRenderer'
-import { Copy, CheckCheck, Sparkles, AlertCircle, GripVertical, Check } from 'lucide-react'
+import { Copy, CheckCheck, Sparkles, AlertCircle, GripVertical, Check, ImagePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── AI extraction prompt ───────────────────────────────────────────────────
-// Instructs the AI to produce explanations in the rich structured format
-// that ExplanationRenderer knows how to display.
 const PROMPT = `You are an expert question extractor and educator.
 Extract ALL questions from the content I give you and return them as a JSON array.
 
@@ -54,36 +52,45 @@ Step 3: [Short label — 3 to 4 words]\\n
 ✅ The answer is [CORRECT ANSWER] because [one simple sentence]\\n
 💡 Remember: [One rule for next time — maximum 10 words]
 
-GOOD CALC EXAMPLE:
-"Step 1: We need to find the area of the rectangle.\\nStep 2: Write the formula\\n$Area = length \\times width$\\nLength = 8 cm. Width = 5 cm.\\nStep 3: Substitute and calculate\\n$Area = 8 \\times 5$\\n$Area = 40$ cm²\\n✅ The answer is 40 cm² because we multiply length by width to find area.\\n💡 Remember: Area of a rectangle = length × width."
-
 EXPLANATION FORMAT FOR CONCEPT SUBJECTS (English, History, Biology, Geography, etc.):
 
 Write for a student who just got this wrong. Simple words. Short sentences. Assume nothing.
 Use \\n between every single line.
+Explain WHY the correct answer is right.
+Briefly explain why the wrong options are wrong if helpful.
+End with: ✅ The answer is [CORRECT ANSWER] because [one sentence]
+Then: 💡 Remember: [One memorable tip — max 10 words]`
 
-STRUCTURE:
-[What the correct answer IS — plain language, one sentence]\\n
-[WHY it is correct — simplest possible reason, one sentence]\\n
-Key Concept: [The one thing to remember — one sentence]\\n
-[For each wrong option: "A. Why option A is wrong — one short sentence"]\\n
-✅ The answer is [CORRECT ANSWER] because [one simple sentence]\\n
-💡 Remember: [One rule for next time — maximum 10 words]
-
-GOOD CONCEPT EXAMPLE:
-"Photosynthesis happens in the chloroplasts.\\nChloroplasts contain chlorophyll which captures light energy.\\nKey Concept: Chloroplasts are where plants make food using light.\\nA. The mitochondria releases energy — it does not make food.\\nC. The nucleus controls the cell but is not involved in photosynthesis.\\nD. The vacuole stores water only.\\n✅ The answer is B because only chloroplasts carry out photosynthesis.\\n💡 Remember: Chloroplasts do photosynthesis — mitochondria do respiration."
-
-Extract EVERY question. Return ONLY the JSON array.`
-
-export default function AIImport({ onImport }) {
-  const [pasted,    setPasted]    = useState('')
-  const [copied,    setCopied]    = useState(false)
-  const [error,     setError]     = useState('')
+export default function AIImport({ onImport, questionType = 'mcq' }) {
+  const [parsed,     setParsed]     = useState([])
+  const [pasted,     setPasted]     = useState('')
+  const [error,      setError]      = useState('')
   const [partialMsg, setPartialMsg] = useState('')
-  const [loading,   setLoading]   = useState(false)
-  const [parsed,    setParsed]    = useState([])
-  const [selected,  setSelected]  = useState(new Set())
-  const [dragIndex, setDragIndex] = useState(null)
+  const [copied,     setCopied]     = useState(false)
+  const [loading,    setLoading]    = useState(false)
+  const [selected,   setSelected]   = useState(new Set())
+  const [dragIndex,  setDragIndex]  = useState(null)
+
+  // ── Calculation questions can't be extracted from images/worksheets ────
+  // AI cannot reliably infer structured answer_template from a worksheet.
+  if (questionType === 'calculation') {
+    return (
+      <div className="rounded-xl border border-border bg-surface px-5 py-8 text-center flex flex-col items-center gap-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-ink-4/10">
+          <ImagePlus className="h-6 w-6 text-ink-4" />
+        </div>
+        <p className="text-sm font-semibold text-ink">
+          AI-Assisted Import isn't available for Calculation questions
+        </p>
+        <p className="text-xs text-ink-3 max-w-xs leading-relaxed">
+          Calculation questions need a structured answer template that can't be reliably
+          detected from a worksheet image. Use{' '}
+          <strong>Generate with AI</strong> or{' '}
+          <strong>Generate with AI (Copy &amp; Paste)</strong> instead.
+        </p>
+      </div>
+    )
+  }
 
   const copyPrompt = () => {
     navigator.clipboard.writeText(PROMPT)
@@ -96,7 +103,7 @@ export default function AIImport({ onImport }) {
     setPartialMsg('')
     setLoading(true)
 
-    const result = parseAIResponse(pasted)
+    const result = parseAIResponse(pasted, questionType)
 
     if (!result.ok) {
       setError(result.errorMessage)
@@ -245,13 +252,19 @@ export default function AIImport({ onImport }) {
           <p className="text-xs text-ink-4 mt-0.5">Select the ones you want · drag to reorder</p>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={toggleAll}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-surface text-ink-3 hover:border-brand-400 transition-colors">
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-surface text-ink-3 hover:border-brand-400 transition-colors"
+          >
             {selected.size === parsed.length ? 'Deselect all' : 'Select all'}
           </button>
-          <button type="button" onClick={() => { setParsed([]); setPasted('') }}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-surface text-ink-3 hover:border-danger transition-colors">
-            Try again
+          <button
+            type="button"
+            onClick={() => { setParsed([]); setPasted('') }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-surface text-ink-3 hover:border-danger transition-colors"
+          >
+            Start over
           </button>
         </div>
       </div>
@@ -272,39 +285,34 @@ export default function AIImport({ onImport }) {
               )}
             >
               <GripVertical size={16} className="text-ink-4 flex-shrink-0 mt-0.5" />
-              <button type="button" onClick={() => toggleSelect(q.id)}
+              <button
+                type="button"
+                onClick={() => toggleSelect(q.id)}
                 className={cn(
                   'w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors',
-                  isSelected ? 'bg-brand-700 border-brand-700' : 'border-border bg-white'
-                )}>
+                  isSelected ? 'border-brand-500 bg-brand-500' : 'border-border bg-white'
+                )}
+              >
                 {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
               </button>
-              <div className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                {i + 1}
-              </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-ink leading-relaxed">
-                  <MathRenderer text={q.text} />
+                <p className="text-sm text-ink leading-snug">
+                  <MathRenderer text={q.text || ''} />
                 </p>
                 {q.options?.length > 0 && (
-                  <div className="mt-2 flex flex-col gap-1">
-                    {q.options.map((opt, oi) => {
-                      const letter   = opt.charAt(0)
-                      const isAnswer = letter === q.answer
-                      return (
-                        <p key={oi} className={cn(
-                          'text-xs px-2 py-1 rounded',
-                          isAnswer ? 'bg-success-light text-success font-semibold' : 'text-ink-4'
-                        )}>
-                          <MathRenderer text={opt} /> {isAnswer && '✓'}
-                        </p>
-                      )
-                    })}
+                  <div className="mt-2 flex flex-col gap-0.5">
+                    {q.options.map((opt, oi) => (
+                      <p key={oi} className={cn(
+                        'text-xs',
+                        opt.charAt(0) === q.answer ? 'text-success font-semibold' : 'text-ink-3'
+                      )}>
+                        {opt}
+                      </p>
+                    ))}
                   </div>
                 )}
-                {q.hint && <p className="text-xs text-amber mt-1.5">💡 {q.hint}</p>}
-                {q.explanation && (
-                  <p className="text-xs text-brand-500 mt-1">📖 Explanation included</p>
+                {(q.type === 'truefalse' || q.question_type === 'true_false') && (
+                  <p className="text-xs text-success font-semibold mt-1">Answer: {q.answer}</p>
                 )}
               </div>
             </div>
@@ -313,15 +321,20 @@ export default function AIImport({ onImport }) {
       </div>
 
       <div className="flex items-center justify-between pt-2 border-t border-border">
-        <p className="text-sm text-ink-4">{selected.size} of {parsed.length} selected</p>
+        <button
+          type="button"
+          onClick={() => { setParsed([]); setPasted('') }}
+          className="text-xs font-semibold text-ink-3 hover:text-ink transition-colors"
+        >
+          ← Start over
+        </button>
         <button
           type="button"
           onClick={handleConfirm}
           disabled={selected.size === 0}
           className="flex items-center gap-2 px-5 py-2.5 bg-brand-800 text-white text-sm font-bold rounded-xl hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Sparkles size={15} />
-          Use {selected.size} Question{selected.size !== 1 ? 's' : ''} →
+          Add {selected.size} Question{selected.size !== 1 ? 's' : ''} →
         </button>
       </div>
     </div>

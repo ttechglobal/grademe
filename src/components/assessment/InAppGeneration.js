@@ -12,11 +12,11 @@ const QUESTION_COUNTS = [3, 5, 10, 15, 20]
 const DIFFICULTIES    = ['easy', 'medium', 'hard']
 
 const ACADEMIC_STYLES = [
-  { id: 'standard',     label: 'Standard Academic',            desc: 'Rigorous and balanced — suitable for most university examinations' },
-  { id: 'cambridge',    label: 'Cambridge Style',              desc: 'Analytical and structured — favours application and scenario-based thinking' },
-  { id: 'oxford',       label: 'Oxford Style',                 desc: 'Critical thinking focus — tests depth of understanding and reasoning' },
-  { id: 'harvard',      label: 'Harvard Style',               desc: 'Case-based and applied — practical scenarios and real-world application' },
-  { id: 'professional', label: 'Professional / Industry',      desc: 'Certification-style — precise technical knowledge testing' },
+  { id: 'standard',     label: 'Standard Academic',       desc: 'Rigorous and balanced — suitable for most university examinations' },
+  { id: 'cambridge',    label: 'Cambridge Style',         desc: 'Analytical and structured — favours application and scenario-based thinking' },
+  { id: 'oxford',       label: 'Oxford Style',            desc: 'Critical thinking focus — tests depth of understanding and reasoning' },
+  { id: 'harvard',      label: 'Harvard Style',           desc: 'Case-based and applied — practical scenarios and real-world application' },
+  { id: 'professional', label: 'Professional / Industry', desc: 'Certification-style — precise technical knowledge testing' },
 ]
 
 export default function InAppGeneration({
@@ -39,8 +39,13 @@ export default function InAppGeneration({
   const [showBuyHint,   setShowBuyHint]   = useState(false)
 
   const cost        = calcCost(questionType, count)
-  const canAfford   = creditsLoading || credits >= cost   // treat loading as "can afford" — avoid false warning
+  const canAfford   = creditsLoading || credits >= cost
   const canGenerate = topic.trim().length > 0 && !creditsLoading && credits >= cost && !generating
+
+  const questionTypeLabel =
+    questionType === 'true_false'  ? 'True/False' :
+    questionType === 'calculation' ? 'Calculation' :
+                                     'MCQ'
 
   const handleGenerate = async () => {
     if (!canGenerate) return
@@ -94,9 +99,27 @@ export default function InAppGeneration({
           <h2 className="font-display text-xl font-bold text-ink">Generate with AI</h2>
         </div>
         <p className="text-sm text-ink-3">
-          Describe a topic and AI will build {count} {questionType === 'true_false' ? 'True/False' : 'MCQ'} question{count !== 1 ? 's' : ''} instantly.
+          Describe a topic and AI will build {count} {questionTypeLabel} question{count !== 1 ? 's' : ''} instantly.
         </p>
       </div>
+
+      {/* Credits indicator */}
+      {!creditsLoading && (
+        <div className={cn(
+          'flex items-center justify-between px-4 py-3 rounded-xl border',
+          canAfford ? 'bg-brand-50 border-brand-200' : 'bg-danger-light border-danger/30'
+        )}>
+          <div className="flex items-center gap-2">
+            <Zap size={14} className={canAfford ? 'text-brand-600' : 'text-danger'} />
+            <span className={cn('text-sm font-semibold', canAfford ? 'text-brand-700' : 'text-danger')}>
+              {credits} credit{credits !== 1 ? 's' : ''} available
+            </span>
+          </div>
+          <span className={cn('text-xs', canAfford ? 'text-brand-500' : 'text-danger')}>
+            This will use {cost} credit{cost !== 1 ? 's' : ''}
+          </span>
+        </div>
+      )}
 
       {/* Topic */}
       <div className="flex flex-col gap-1.5">
@@ -105,7 +128,9 @@ export default function InAppGeneration({
           type="text"
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
-          placeholder={isUniversity ? 'e.g. Central Dogma of Molecular Biology, Keynesian Economics…' : 'e.g. Quadratic equations, Photosynthesis, World War 2…'}
+          placeholder={isUniversity
+            ? 'e.g. Central Dogma of Molecular Biology, Keynesian Economics…'
+            : 'e.g. Quadratic equations, Photosynthesis, World War 2…'}
           className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-300 transition-all"
         />
       </div>
@@ -131,119 +156,86 @@ export default function InAppGeneration({
           {DIFFICULTIES.map((d) => (
             <button key={d} type="button" onClick={() => setDifficulty(d)}
               className={cn('flex-1 py-2 rounded-xl text-sm font-semibold border-2 transition-all capitalize',
-                difficulty === d ? 'border-brand-600 bg-brand-50 text-brand-800' : 'border-border bg-white text-ink hover:border-brand-200')}>
+                difficulty === d
+                  ? 'border-brand-600 bg-brand-50 text-brand-800'
+                  : 'border-border bg-white text-ink hover:border-brand-200')}>
               {d}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Advanced options — university only (academic style) or just context for K-12 */}
-      <div className="border border-border rounded-2xl overflow-hidden">
+      {/* Academic style — university only */}
+      {isUniversity && (
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold text-ink-2">Academic Style</label>
+          <div className="flex flex-col gap-2">
+            {ACADEMIC_STYLES.map((s) => (
+              <button key={s.id} type="button" onClick={() => setAcademicStyle(s.id)}
+                className={cn(
+                  'flex items-start gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all',
+                  academicStyle === s.id
+                    ? 'border-brand-600 bg-brand-50'
+                    : 'border-border bg-white hover:border-brand-200'
+                )}>
+                <div className={cn(
+                  'w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 transition-colors',
+                  academicStyle === s.id ? 'border-brand-600 bg-brand-600' : 'border-border'
+                )} />
+                <div>
+                  <p className={cn('text-sm font-semibold', academicStyle === s.id ? 'text-brand-800' : 'text-ink')}>
+                    {s.label}
+                  </p>
+                  <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">{s.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Advanced options */}
+      <div>
         <button
           type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface transition-colors"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-1.5 text-sm font-semibold text-ink-3 hover:text-ink transition-colors"
         >
-          <span className="text-sm font-semibold text-ink">Advanced options</span>
-          <ChevronDown size={15} className={cn('text-ink-4 transition-transform', showAdvanced && 'rotate-180')} />
+          <ChevronDown size={15} className={cn('transition-transform', showAdvanced && 'rotate-180')} />
+          Advanced options
         </button>
-
         {showAdvanced && (
-          <div className="px-4 pb-4 pt-1 border-t border-border flex flex-col gap-4">
-
-            {/* Academic style — university only */}
-            {isUniversity && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-ink-2">Academic Style</label>
-                <p className="text-xs text-ink-4">Shapes how questions are written and what kind of thinking is tested.</p>
-                <div className="flex flex-col gap-2 mt-1">
-                  {ACADEMIC_STYLES.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setAcademicStyle(s.id)}
-                      className={cn(
-                        'flex items-start gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all',
-                        academicStyle === s.id
-                          ? 'border-brand-600 bg-brand-50'
-                          : 'border-border bg-white hover:border-brand-200'
-                      )}
-                    >
-                      <div className={cn(
-                        'w-4 h-4 rounded-full border-2 flex-shrink-0 mt-0.5 transition-colors',
-                        academicStyle === s.id
-                          ? 'border-brand-600 bg-brand-600'
-                          : 'border-border'
-                      )} />
-                      <div className="min-w-0">
-                        <p className={cn('text-sm font-semibold leading-snug', academicStyle === s.id ? 'text-brand-900' : 'text-ink')}>
-                          {s.label}
-                        </p>
-                        <p className="text-[11px] text-ink-4 mt-0.5 leading-relaxed">{s.desc}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Additional context */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold text-ink-2">
-                Additional context <span className="text-ink-4 font-normal">(optional)</span>
-              </label>
-              <textarea
-                rows={2}
-                value={extraContext}
-                onChange={(e) => setExtraContext(e.target.value)}
-                placeholder="e.g. Focus on solving by factoring, not the quadratic formula"
-                className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 hover:border-brand-300 resize-none transition-all"
-              />
-            </div>
+          <div className="mt-3 flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-ink-2">
+              Extra context <span className="text-ink-4 font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={extraContext}
+              onChange={(e) => setExtraContext(e.target.value)}
+              placeholder="Any specific focus, subtopics, or instructions for the AI…"
+              rows={3}
+              className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 resize-none"
+            />
           </div>
         )}
       </div>
 
-      {/* Credit cost bar */}
-      <div className={cn(
-        'flex items-center justify-between px-4 py-3 rounded-xl border',
-        !creditsLoading && credits < cost ? 'bg-danger-light border-danger/30' : 'bg-brand-50 border-brand-200'
-      )}>
-        <div className="flex items-center gap-2">
-          <Zap size={14} className={!creditsLoading && credits < cost ? 'text-danger' : 'text-brand-500'} />
-          <span className={cn('text-sm font-semibold', !creditsLoading && credits < cost ? 'text-danger' : 'text-brand-700')}>
-            This will use <strong>{cost}</strong> credit{cost !== 1 ? 's' : ''}
-          </span>
-        </div>
-        <span className={cn('text-xs font-medium', !creditsLoading && credits < cost ? 'text-danger' : 'text-brand-500')}>
-          {creditsLoading ? 'Loading…' : `${credits} available`}
-        </span>
-      </div>
-
-      {/* Insufficient credits — only shown once balance is confirmed */}
-      {!creditsLoading && credits < cost && !showBuyHint && (
-        <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-sm text-danger">Not enough credits. You need {cost}, you have {credits}.</p>
-          <Link href="/dashboard/credits"
-            className="text-xs font-bold text-white bg-danger px-3 py-2 rounded-xl hover:bg-danger/90 transition-colors whitespace-nowrap flex-shrink-0">
-            Buy Credits →
-          </Link>
+      {/* Error */}
+      {error && (
+        <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 text-sm text-danger">
+          {error}
         </div>
       )}
 
-      {/* Insufficient credits from API response */}
+      {/* Buy hint */}
       {showBuyHint && (
-        <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-sm text-danger">{error || `Not enough credits. You need ${cost}, you have ${credits}.`}</p>
-          <Link href="/dashboard/credits"
-            className="text-xs font-bold text-white bg-danger px-3 py-2 rounded-xl hover:bg-danger/90 transition-colors whitespace-nowrap flex-shrink-0">
-            Buy Credits →
+        <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 text-sm text-brand-700 leading-relaxed">
+          You need more credits to generate questions.{' '}
+          <Link href="/dashboard/credits" className="font-bold underline underline-offset-2">
+            Buy credits →
           </Link>
         </div>
       )}
-        <p className="text-sm text-danger bg-danger-light border border-danger/20 rounded-xl px-4 py-3">{error}</p>
-      
 
       {/* Generate button */}
       <button
@@ -251,19 +243,17 @@ export default function InAppGeneration({
         onClick={handleGenerate}
         disabled={!canGenerate}
         className={cn(
-          'w-full py-4 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2',
+          'flex items-center justify-center gap-2 w-full py-3.5 rounded-xl text-sm font-bold transition-all',
           canGenerate
-            ? 'bg-brand-900 text-white hover:bg-brand-700 shadow-lg shadow-brand-900/20'
+            ? 'bg-brand-800 text-white hover:bg-brand-700 active:scale-[0.98]'
             : 'bg-border text-ink-4 cursor-not-allowed'
         )}
       >
-        {generating ? (
-          <><Loader2 size={16} className="animate-spin" />Generating {count} question{count !== 1 ? 's' : ''}…</>
-        ) : (
-          <><Sparkles size={16} />Generate {count} Question{count !== 1 ? 's' : ''} — {cost} Credit{cost !== 1 ? 's' : ''}</>
-        )}
+        {generating
+          ? <><Loader2 size={16} className="animate-spin" /> Generating…</>
+          : <><Sparkles size={16} /> Generate {count} {questionTypeLabel} Question{count !== 1 ? 's' : ''} ({cost} credit{cost !== 1 ? 's' : ''})</>
+        }
       </button>
-
     </div>
   )
 }

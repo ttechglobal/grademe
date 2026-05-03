@@ -1,120 +1,189 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+// src/app/api/submit/route.js
+// POST — student submits assessment answers
+// Server-side scoring: client-sent scores are ignored for integrity.
 
-function adminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
+import { createClient } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
+
+// ─── SCORING HELPERS ──────────────────────────────────────────────────────────
+
+function scoreMCQ(question, studentAnswer) {
+  if (!studentAnswer) return false;
+  const correct = (question.correct_answer || '').trim().toUpperCase()[0];
+  const student = studentAnswer.trim().toUpperCase()[0];
+  return correct === student;
 }
+
+function scoreTrueFalse(question, studentAnswer) {
+  if (!studentAnswer) return false;
+  const correct = /^true/i.test(question.correct_answer || '') ? 'true' : 'false';
+  const student = /^true/i.test(studentAnswer) ? 'true' : 'false';
+  return correct === student;
+}
+
+/**
+ * scoreCalculation
+ * studentBoxValues: { [boxId]: string }
+ * Returns: { correct: boolean, boxResults: { [boxId]: 'correct' | 'wrong' } }
+ */
+function scoreCalculation(question, studentBoxValues) {
+  const template = question.answer_template;
+  if (!template || !template.structure?.length) {
+    return { correct: false, boxResults: {} };
+  }
+
+  const boxResults = {};
+  let allCorrect = true;
+
+  for (const item of template.structure) {
+    const studentVal = (studentBoxValues?.[item.id] || '').trim().toLowerCase();
+    const accepted = (item.accepted || [item.answer]).map((a) =>
+      String(a).trim().toLowerCase()
+    );
+    const isBoxCorrect = accepted.includes(studentVal);
+    boxResults[item.id] = isBoxCorrect ? 'correct' : 'wrong';
+    if (!isBoxCorrect) allCorrect = false;
+  }
+
+  return { correct: allCorrect, boxResults };
+}
+
+// ─── ROUTE HANDLER ────────────────────────────────────────────────────────────
 
 export async function POST(request) {
   try {
-    const body = await request.json()
+    const body = await request.json();
     const {
       assessmentId,
       studentName,
-      answers,
-      score,
-      total,
-      sessionKey,
-      timeTakenSecs,
-      tabViolations,
-    } = body
+      studentData,
+      answers, // { [questionId]: string | { [boxId]: string } }
+    } = body;
 
     if (!assessmentId || !studentName) {
       return NextResponse.json(
-        { error: 'assessmentId and studentName are required' },
+        { error: 'Missing required fields' },
         { status: 400 }
-      )
+      );
     }
 
-    const db = adminClient()
+    const supabase = await createClient();
 
-    // Verify assessment exists and get teacher context
-    const { data: assessment, error: aErr } = await db
+    // ── Fetch assessment ───────────────────────────────────────────────────
+    const { data: assessment, error: assessmentError } = await supabase
       .from('assessments')
-      .select('id, teacher_id, title, class_level')
+      .select('id, question_type, show_results, is_active')
       .eq('id', assessmentId)
-      .single()
+      .single();
 
-    if (aErr || !assessment) {
-      console.error('[submit] Assessment not found:', aErr?.message)
-      return NextResponse.json({ error: 'Assessment not found' }, { status: 404 })
+    if (assessmentError || !assessment) {
+      return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
 
-    // Try to link a student_profile_id if the table exists
-    let profileId = null
-    try {
-      const { data: existing } = await db
-        .from('student_profiles')
-        .select('id')
-        .eq('teacher_id', assessment.teacher_id)
-        .ilike('full_name', studentName.trim())
-        .is('merged_into', null)
-        .maybeSingle()
+    if (!assessment.is_active) {
+      return NextResponse.json({ error: 'This assessment is no longer active' }, { status: 403 });
+    }
 
-      if (existing) {
-        profileId = existing.id
-        await db.from('student_profiles')
-          .update({ last_active: new Date().toISOString() })
-          .eq('id', profileId)
+    // ── Fetch questions ────────────────────────────────────────────────────
+    const { data: questions, error: questionsError } = await supabase
+      .from('questions')
+      .select('id, question_type, correct_answer, options, answer_template')
+      .eq('assessment_id', assessmentId)
+      .order('order_index');
+
+    if (questionsError || !questions?.length) {
+      return NextResponse.json({ error: 'No questions found' }, { status: 404 });
+    }
+
+    // ── Server-side scoring ────────────────────────────────────────────────
+    let correctCount = 0;
+    const scoredAnswers = {}; // what we store in submissions.answers
+    // For calculation: also store boxResults so results page can use them
+    const calculationResults = {}; // { [questionId]: { [boxId]: 'correct'|'wrong' } }
+
+    for (const question of questions) {
+      const qType = question.question_type || assessment.question_type;
+      const studentAnswer = answers?.[question.id];
+
+      if (qType === 'calculation') {
+        // studentAnswer is { [boxId]: string }
+        const boxValues = typeof studentAnswer === 'object' ? studentAnswer : {};
+        const { correct, boxResults } = scoreCalculation(question, boxValues);
+        if (correct) correctCount++;
+        scoredAnswers[question.id] = boxValues;
+        calculationResults[question.id] = boxResults;
+      } else if (qType === 'true_false') {
+        const isCorrect = scoreTrueFalse(question, studentAnswer);
+        if (isCorrect) correctCount++;
+        scoredAnswers[question.id] = studentAnswer || '';
       } else {
-        const { data: created } = await db
-          .from('student_profiles')
-          .insert({
-            teacher_id:  assessment.teacher_id,
-            full_name:   studentName.trim(),
-            grade_class: assessment.class_level ?? null,
-            last_active: new Date().toISOString(),
-          })
-          .select('id')
-          .single()
-        profileId = created?.id ?? null
+        // MCQ (default)
+        const isCorrect = scoreMCQ(question, studentAnswer);
+        if (isCorrect) correctCount++;
+        scoredAnswers[question.id] = studentAnswer || '';
       }
-    } catch {
-      // student_profiles table may not exist yet — submission still succeeds
-      console.warn('[submit] student_profiles unavailable, submitting without profile link')
     }
 
-    // Insert the submission
-    const { data: sub, error: subErr } = await db
+    const totalQuestions = questions.length;
+    const score = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
+
+    // ── Get IP address ─────────────────────────────────────────────────────
+    const forwarded = request.headers.get('x-forwarded-for');
+    const ipAddress = forwarded ? forwarded.split(',')[0].trim() : 'unknown';
+
+    // ── Insert submission ──────────────────────────────────────────────────
+    const { data: submission, error: submissionError } = await supabase
       .from('submissions')
       .insert({
-        assessment_id:      assessmentId,
-        student_name:       studentName.trim(),
-        answers,
-        score:              score  ?? 0,
-        total:              total  ?? 0,
-        completed_at:       new Date().toISOString(),
-        session_key:        sessionKey    ?? null,
-        time_taken_secs:    timeTakenSecs ?? null,
-        tab_violations:     tabViolations ?? 0,
-        student_profile_id: profileId,
-        grade_class:        assessment.class_level ?? null,
-        student_identifier: null,
+        assessment_id: assessmentId,
+        student_name: studentName,
+        student_data: studentData || {},
+        answers: scoredAnswers,
+        score: Math.round(score * 10) / 10,
+        total_questions: totalQuestions,
+        completed_at: new Date().toISOString(),
+        ip_address: ipAddress,
       })
-      .select('id, score, total')
-      .single()
+      .select('id, score, total_questions')
+      .single();
 
-    if (subErr) {
-      console.error('[submit] Insert failed:', subErr.message)
-      return NextResponse.json({ error: subErr.message }, { status: 500 })
+    if (submissionError) {
+      console.error('[submit] Submission insert error:', submissionError);
+      return NextResponse.json({ error: 'Failed to save submission' }, { status: 500 });
     }
 
-    console.log(`[submit] ✓ ${studentName} scored ${score}% on ${assessment.title}`)
+    // ── Build results payload ──────────────────────────────────────────────
+    if (!assessment.show_results) {
+      return NextResponse.json({
+        success: true,
+        submissionId: submission.id,
+        score: submission.score,
+        totalQuestions: submission.total_questions,
+        correctCount,
+        showResults: false,
+      });
+    }
+
+    // Fetch full questions for results display
+    const { data: fullQuestions } = await supabase
+      .from('questions')
+      .select('id, question_text, question_type, options, correct_answer, explanation, hint, answer_template, order_index')
+      .eq('assessment_id', assessmentId)
+      .order('order_index');
 
     return NextResponse.json({
       success: true,
-      id:      sub.id,
-      score:   sub.score,
-      total:   sub.total,
-    })
-
+      submissionId: submission.id,
+      score: submission.score,
+      totalQuestions: submission.total_questions,
+      correctCount,
+      showResults: true,
+      questions: fullQuestions || [],
+      answers: scoredAnswers,
+      calculationResults, // { [qId]: { [boxId]: 'correct'|'wrong' } }
+    });
   } catch (err) {
-    console.error('[submit] Unhandled:', err.message)
-    return NextResponse.json({ error: err.message ?? 'Server error' }, { status: 500 })
+    console.error('[submit] Unexpected error:', err);
+    return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 });
   }
 }
