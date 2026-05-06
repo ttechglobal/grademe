@@ -4,8 +4,10 @@
 
 import { validateCredits, deductCredits } from './creditService';
 
+// ✅ AFTER — use v1 (stable), with gemini-2.0-flash
+// ✅ AFTER
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
 
 const STEM_SUBJECTS = [
   'math', 'maths', 'mathematics', 'physics', 'chemistry',

@@ -3,7 +3,7 @@
 /**
  * src/components/student/MathAnswerInput.js
  *
- * Renders structured answer boxes for calculation questions.
+ * Renders structured answer boxes for calculation (Fill-in Answer) questions.
  *
  * Props:
  *   template  {object}  question.answer_template
@@ -11,54 +11,63 @@
  *   onChange  {fn}      (boxId, value) => void
  *   readOnly  {boolean} true in results mode
  *   result    {object}  { [boxId]: 'correct'|'wrong' } — results mode only
+ *
+ * FIXES applied in this version:
+ *   - Boxes auto-grow with content (width:auto + size attr) so long answers
+ *     like "-123.45 m/s" are fully visible and not clipped
+ *   - Text is left-aligned for readability of longer values
+ *   - font-size 16px prevents iOS auto-zoom on focus
+ *   - Touch targets: minHeight 48px (≥44px WCAG)
+ *   - Superscript boxes intentionally smaller (exponents are short)
  */
 
 import { useRef } from 'react'
-import { cn } from '@/lib/utils'
 
 // ─── Single answer box ────────────────────────────────────────────────────────
 
-function AnswerBox({ id, value, onChange, result, readOnly, superscript = false }) {
+function AnswerBox({ id, value, onChange, result, readOnly, superscript = false, fraction = false }) {
   const inputRef = useRef(null)
+  const status   = result?.[id]
 
-  const status = result?.[id]
+  const minW  = superscript ? '40px'    : fraction ? '56px' : '64px'
+  const minH  = superscript ? '32px'    : '48px'
+  const fSize = superscript ? '13px'    : '16px'   // 16px prevents iOS auto-zoom
+  const pad   = superscript ? '2px 4px' : '8px 10px'
 
   const baseStyle = {
-    fontFamily:    'Nunito, sans-serif',
-    textAlign:     'center',
-    outline:       'none',
-    border:        '2px solid',
-    borderRadius:  '8px',
-    minWidth:      superscript ? '36px' : '52px',
-    minHeight:     superscript ? '36px' : '48px',
-    width:         superscript ? '36px' : '52px',
-    height:        superscript ? '36px' : '48px',
-    fontSize:      superscript ? '13px' : '18px',
-    fontWeight:    '700',
-    padding:       '2px 4px',
-    display:       'inline-flex',
-    alignItems:    'center',
-    justifyContent: 'center',
-    transition:    'border-color 0.15s, background 0.15s',
-    // correct/wrong use hardcoded hex — no design token exists for these
+    fontFamily:       'Nunito, sans-serif',
+    width:            'auto',      // grow with content
+    minWidth:         minW,
+    minHeight:        minH,
+    height:           superscript ? '32px' : '48px',
+    fontSize:         fSize,
+    fontWeight:       '700',
+    padding:          pad,
+    textAlign:        'left',      // left-align — long answers stay visible
+    outline:          'none',
+    border:           '2px solid',
+    borderRadius:     '8px',
+    display:          'inline-block',
+    transition:       'border-color 0.15s, background 0.15s, box-shadow 0.15s',
+    WebkitAppearance: 'none',
+    boxSizing:        'content-box', // size attr drives width correctly
     ...(status === 'correct' ? {
-      borderColor:  '#3B6D11',
-      background:   '#EAF3DE',
-      color:        '#3B6D11',
+      borderColor: '#3B6D11',
+      background:  '#EAF3DE',
+      color:       '#3B6D11',
     } : status === 'wrong' ? {
-      borderColor:  '#A32D2D',
-      background:   '#FCEBEB',
-      color:        '#A32D2D',
+      borderColor: '#A32D2D',
+      background:  '#FCEBEB',
+      color:       '#A32D2D',
     } : {
-      borderColor:  'var(--color-border)',
-      background:   'var(--color-surface)',
-      color:        'var(--color-ink)',
+      borderColor: 'var(--color-border)',
+      background:  'var(--color-surface)',
+      color:       'var(--color-ink)',
     }),
   }
 
-  const focusStyle = !readOnly && !status ? {
-    '--focus-border': 'var(--color-brand-500)',
-  } : {}
+  // size attribute: native HTML makes the input wide enough for `size` chars
+  const sizeAttr = Math.max(superscript ? 2 : 3, (value || '').length + 1)
 
   return (
     <input
@@ -69,6 +78,7 @@ function AnswerBox({ id, value, onChange, result, readOnly, superscript = false 
       value={value || ''}
       placeholder={readOnly ? '' : '?'}
       readOnly={readOnly}
+      size={sizeAttr}
       onChange={readOnly ? undefined : (e) => onChange?.(id, e.target.value)}
       style={baseStyle}
       onFocus={(e) => {
@@ -87,22 +97,29 @@ function AnswerBox({ id, value, onChange, result, readOnly, superscript = false 
   )
 }
 
-// ─── Correct answer label (shown below wrong boxes in results mode) ────────────
+// ─── Correct answer label ────────────────────────────────────────────────────
 
 function CorrectLabel({ answer }) {
   return (
-    <div style={{ color: '#3B6D11', fontSize: '11px', fontWeight: '700', textAlign: 'center', marginTop: '2px' }}>
+    <div style={{
+      color:      '#3B6D11',
+      fontSize:   '11px',
+      fontWeight: '700',
+      textAlign:  'center',
+      marginTop:  '3px',
+      whiteSpace: 'nowrap',
+    }}>
       ✓ {answer}
     </div>
   )
 }
 
-// ─── Helper: wrap a box + optional correct label ─────────────────────────────
+// ─── Box + optional correct label wrapper ────────────────────────────────────
 
-function BoxWithLabel({ item, value, onChange, result, readOnly, superscript = false }) {
+function BoxWithLabel({ item, value, onChange, result, readOnly, superscript = false, fraction = false }) {
   const showCorrect = readOnly && result?.[item.id] === 'wrong'
   return (
-    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
       <AnswerBox
         id={item.id}
         value={value}
@@ -110,6 +127,7 @@ function BoxWithLabel({ item, value, onChange, result, readOnly, superscript = f
         result={result}
         readOnly={readOnly}
         superscript={superscript}
+        fraction={fraction}
       />
       {showCorrect && <CorrectLabel answer={item.answer} />}
     </div>
@@ -119,13 +137,14 @@ function BoxWithLabel({ item, value, onChange, result, readOnly, superscript = f
 // ─── Template renderers ───────────────────────────────────────────────────────
 
 function RenderFraction({ structure, value, onChange, result, readOnly }) {
-  const num = structure.find(s => s.id === 'num') || structure[0]
-  const den = structure.find(s => s.id === 'den') || structure[1]
+  const num = structure.find((s) => s.id === 'num') || structure[0]
+  const den = structure.find((s) => s.id === 'den') || structure[1]
+  if (!num || !den) return <RenderDefault structure={structure} value={value} onChange={onChange} result={result} readOnly={readOnly} />
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-      <BoxWithLabel item={num} value={value?.[num?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      <div style={{ width: '100%', minWidth: '60px', height: '2px', background: 'var(--color-ink)', borderRadius: '1px' }} />
-      <BoxWithLabel item={den} value={value?.[den?.id]} onChange={onChange} result={result} readOnly={readOnly} />
+      <BoxWithLabel item={num} value={value?.[num.id]} onChange={onChange} result={result} readOnly={readOnly} fraction />
+      <div style={{ width: '100%', minWidth: '56px', height: '2px', background: 'var(--color-ink)', borderRadius: '1px' }} />
+      <BoxWithLabel item={den} value={value?.[den.id]} onChange={onChange} result={result} readOnly={readOnly} fraction />
     </div>
   )
 }
@@ -137,48 +156,36 @@ function RenderPower({ structure, value, onChange, result, readOnly }) {
     <div style={{ display: 'inline-flex', alignItems: 'flex-start', gap: '2px' }}>
       <BoxWithLabel item={base} value={value?.[base?.id]} onChange={onChange} result={result} readOnly={readOnly} />
       <div style={{ marginTop: '-4px' }}>
-        <BoxWithLabel item={exp} value={value?.[exp?.id]} onChange={onChange} result={result} readOnly={readOnly} superscript />
+        <BoxWithLabel item={exp}  value={value?.[exp?.id]}  onChange={onChange} result={result} readOnly={readOnly} superscript />
       </div>
     </div>
   )
 }
 
 function RenderScientific({ structure, value, onChange, result, readOnly }) {
-  const coeff = structure.find(s => s.id === 'coeff') || structure[0]
-  const exp   = structure.find(s => s.id === 'exp')   || structure[1]
+  const coeff = structure.find((s) => s.id === 'coeff')                                  || structure[0]
+  const expo  = structure.find((s) => s.id === 'exponent' || s.id === 'exp')             || structure[1]
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
       <BoxWithLabel item={coeff} value={value?.[coeff?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      <span style={{ fontWeight: '700', fontSize: '18px', color: 'var(--color-ink)' }}>× 10</span>
-      <div style={{ marginTop: '-12px' }}>
-        <BoxWithLabel item={exp} value={value?.[exp?.id]} onChange={onChange} result={result} readOnly={readOnly} superscript />
+      <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--color-ink)', userSelect: 'none' }}>× 10</span>
+      <div style={{ marginTop: '-8px' }}>
+        <BoxWithLabel item={expo} value={value?.[expo?.id]} onChange={onChange} result={result} readOnly={readOnly} superscript />
       </div>
     </div>
   )
 }
 
-function RenderSurd({ structure, value, onChange, result, readOnly }) {
-  const coeff = structure.find(s => s.id === 'coeff') || structure[0]
-  const rad   = structure.find(s => s.id === 'rad')   || structure[1]
-  return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-      <BoxWithLabel item={coeff} value={value?.[coeff?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      <span style={{ fontWeight: '700', fontSize: '22px', color: 'var(--color-ink)' }}>√</span>
-      <BoxWithLabel item={rad} value={value?.[rad?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-    </div>
-  )
-}
-
-function RenderCoordinates({ structure, value, onChange, result, readOnly }) {
-  const x = structure.find(s => s.id === 'x') || structure[0]
-  const y = structure.find(s => s.id === 'y') || structure[1]
+function RenderCoordinate({ structure, value, onChange, result, readOnly }) {
+  const x = structure.find((s) => s.id === 'x') || structure[0]
+  const y = structure.find((s) => s.id === 'y') || structure[1]
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-      <span style={{ fontWeight: '700', fontSize: '22px', color: 'var(--color-ink)' }}>(</span>
+      <span style={{ fontWeight: '700', fontSize: '22px', color: 'var(--color-ink)', userSelect: 'none' }}>(</span>
       <BoxWithLabel item={x} value={value?.[x?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      <span style={{ fontWeight: '700', fontSize: '18px', color: 'var(--color-ink)', margin: '0 2px' }}>,</span>
+      <span style={{ fontWeight: '700', fontSize: '18px', color: 'var(--color-ink)', userSelect: 'none' }}>,</span>
       <BoxWithLabel item={y} value={value?.[y?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      <span style={{ fontWeight: '700', fontSize: '22px', color: 'var(--color-ink)' }}>)</span>
+      <span style={{ fontWeight: '700', fontSize: '22px', color: 'var(--color-ink)', userSelect: 'none' }}>)</span>
     </div>
   )
 }
@@ -188,7 +195,7 @@ function RenderSimultaneous({ structure, value, onChange, result, readOnly }) {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center' }}>
       {structure.map((item) => (
         <div key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--color-ink)', minWidth: '20px' }}>
+          <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--color-ink)', minWidth: '20px', userSelect: 'none' }}>
             {item.label} =
           </span>
           <BoxWithLabel item={item} value={value?.[item.id]} onChange={onChange} result={result} readOnly={readOnly} />
@@ -203,10 +210,8 @@ function RenderTwoRoots({ structure, value, onChange, result, readOnly }) {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
       {structure.map((item, i) => (
         <div key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          {i > 0 && (
-            <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--color-ink-3)', margin: '0 4px' }}>or</span>
-          )}
-          <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--color-ink)' }}>x =</span>
+          {i > 0 && <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--color-ink-3)', margin: '0 4px', userSelect: 'none' }}>or</span>}
+          <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--color-ink)', userSelect: 'none' }}>x =</span>
           <BoxWithLabel item={item} value={value?.[item.id]} onChange={onChange} result={result} readOnly={readOnly} />
         </div>
       ))}
@@ -219,7 +224,7 @@ function RenderPercentage({ structure, value, onChange, result, readOnly }) {
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
       <BoxWithLabel item={item} value={value?.[item?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      <span style={{ fontWeight: '700', fontSize: '20px', color: 'var(--color-ink)' }}>%</span>
+      <span style={{ fontWeight: '700', fontSize: '20px', color: 'var(--color-ink)', userSelect: 'none' }}>%</span>
     </div>
   )
 }
@@ -229,7 +234,7 @@ function RenderAngle({ structure, value, onChange, result, readOnly }) {
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
       <BoxWithLabel item={item} value={value?.[item?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      <span style={{ fontWeight: '700', fontSize: '20px', color: 'var(--color-ink)' }}>°</span>
+      <span style={{ fontWeight: '700', fontSize: '20px', color: 'var(--color-ink)', userSelect: 'none' }}>°</span>
     </div>
   )
 }
@@ -239,7 +244,7 @@ function RenderRatio({ structure, value, onChange, result, readOnly }) {
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
       {structure.map((item, i) => (
         <span key={item.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          {i > 0 && <span style={{ fontWeight: '700', fontSize: '20px', color: 'var(--color-ink)' }}>:</span>}
+          {i > 0 && <span style={{ fontWeight: '700', fontSize: '20px', color: 'var(--color-ink)', userSelect: 'none' }}>:</span>}
           <BoxWithLabel item={item} value={value?.[item.id]} onChange={onChange} result={result} readOnly={readOnly} />
         </span>
       ))}
@@ -252,14 +257,23 @@ function RenderUnits({ structure, unit, value, onChange, result, readOnly }) {
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
       <BoxWithLabel item={item} value={value?.[item?.id]} onChange={onChange} result={result} readOnly={readOnly} />
-      {unit && (
-        <span style={{ fontWeight: '600', fontSize: '15px', color: 'var(--color-ink-3)' }}>{unit}</span>
-      )}
+      {unit && <span style={{ fontWeight: '600', fontSize: '15px', color: 'var(--color-ink-3)', userSelect: 'none' }}>{unit}</span>}
     </div>
   )
 }
 
-// Default: single box or labeled boxes
+function RenderSurd({ structure, value, onChange, result, readOnly }) {
+  const coeff = structure.find((s) => s.id === 'coeff') || structure[0]
+  const rad   = structure.find((s) => s.id === 'rad')   || structure[1]
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+      <BoxWithLabel item={coeff} value={value?.[coeff?.id]} onChange={onChange} result={result} readOnly={readOnly} />
+      <span style={{ fontWeight: '700', fontSize: '18px', color: 'var(--color-ink)', userSelect: 'none' }}>√</span>
+      <BoxWithLabel item={rad}   value={value?.[rad?.id]}   onChange={onChange} result={result} readOnly={readOnly} />
+    </div>
+  )
+}
+
 function RenderDefault({ structure, value, onChange, result, readOnly }) {
   if (structure.length === 1) {
     const item = structure[0]
@@ -284,7 +298,7 @@ function RenderDefault({ structure, value, onChange, result, readOnly }) {
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Main export ──────────────────────────────────────────────────────────────
 
 export default function MathAnswerInput({ template, values = {}, onChange, readOnly = false, result }) {
   if (!template?.structure?.length) {
@@ -298,49 +312,43 @@ export default function MathAnswerInput({ template, values = {}, onChange, readO
   const { type, structure, unit } = template
   const safeValue = (typeof values === 'object' && values !== null) ? values : {}
 
-  let content
-  switch (type) {
-    case 'fraction':
-      content = <RenderFraction  structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'power':
-      content = <RenderPower     structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'scientific':
-      content = <RenderScientific structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'surd':
-      content = <RenderSurd      structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'coordinates':
-      content = <RenderCoordinates structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'simultaneous':
-      content = <RenderSimultaneous structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'two_roots':
-      content = <RenderTwoRoots  structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'percentage':
-      content = <RenderPercentage structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'angle':
-      content = <RenderAngle     structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'ratio':
-      content = <RenderRatio     structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    case 'units':
-      content = <RenderUnits     structure={structure} unit={unit} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
-      break
-    default:
-      // number, decimal, or unknown
-      content = <RenderDefault   structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
+  const wrapperStyle = {
+    display:   'inline-block',
+    padding:   '4px 2px 8px',
+    maxWidth:  '100%',
+    overflowX: 'auto',
   }
 
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', padding: '8px 0' }}>
-      {content}
-    </div>
-  )
+  let inner
+  switch (type) {
+    case 'fraction':
+      inner = <RenderFraction    structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'power':
+      inner = <RenderPower       structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'scientific':
+      inner = <RenderScientific  structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'coordinate':
+    case 'coordinates':
+      inner = <RenderCoordinate  structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'simultaneous':
+      inner = <RenderSimultaneous structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'two_roots':
+      inner = <RenderTwoRoots   structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'percentage':
+      inner = <RenderPercentage structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'angle':
+      inner = <RenderAngle      structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'ratio':
+      inner = <RenderRatio      structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'units':
+      inner = <RenderUnits      structure={structure} unit={unit} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'surd':
+      inner = <RenderSurd       structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />; break
+    case 'number':
+    case 'decimal':
+    default:
+      inner = <RenderDefault    structure={structure} value={safeValue} onChange={onChange} result={result} readOnly={readOnly} />
+  }
+
+  return <div style={wrapperStyle}>{inner}</div>
 }

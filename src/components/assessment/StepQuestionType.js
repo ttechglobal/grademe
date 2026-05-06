@@ -3,6 +3,8 @@
 import { CheckSquare, ToggleLeft, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// FIX 2: Renamed "Calculation / Math Input" → "Fill-in Answer"
+// DB value 'calculation' is unchanged — only the display label changes.
 const QUESTION_TYPES = [
   {
     id: 'mcq',
@@ -18,8 +20,8 @@ const QUESTION_TYPES = [
   },
   {
     id: 'calculation',
-    label: 'Calculation / Math Input',
-    description: 'Students fill in structured answer boxes. Perfect for maths and physics calculations.',
+    label: 'Fill-in Answer',
+    description: 'For maths, physics and calculation-based questions.',
     icon: Calculator,
   },
 ];

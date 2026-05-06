@@ -291,113 +291,80 @@ function ReviewNav({ idx, total, onPrev, onNext, onDone }) {
 function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, subject }) {
   const isCalc = isCalcQ(q)
   const isTF   = isTFQ(q)
-  const boxResults = isCalc ? calcBoxResults(sa, q.answer_template) : null
+  const boxRes = isCalc ? calcBoxResults(sa, q.answer_template) : {}
 
   return (
     <div className="flex flex-col gap-4">
-
-      {/* Result banner */}
+      {/* Status badge */}
       <div className={cn(
-        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2',
-        ok
-          ? 'bg-green-50 border-green-200 text-green-700'
-          : 'bg-surface border-border text-brand-700'
+        'inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold self-start',
+        ok ? 'bg-green-50 text-green-600 border border-green-200'
+           : 'bg-red-50 text-red-500 border border-red-200'
       )}>
-        {ok
-          ? <CheckCircle2 size={18} className="flex-shrink-0 text-green-500" />
-          : <XCircle      size={18} className="flex-shrink-0 text-brand-500" />
-        }
-        <span className="text-sm font-semibold">
-          {ok ? 'You got this one right! Great job.' : "Let's look at this one together."}
-        </span>
+        {ok ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+        {ok ? 'Correct' : 'Incorrect'} — Q{idx + 1} of {total}
       </div>
 
       {/* Question text */}
       <div className="bg-white border border-border rounded-2xl px-5 py-5">
-        <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
-          Question {idx + 1}
-        </p>
-        <p className="text-base font-semibold text-ink leading-relaxed">
+        <p className="text-lg font-semibold text-ink leading-relaxed">
           <MathRenderer text={qText(q)} />
         </p>
       </div>
 
-      {/* ── Answer display ────────────────────────────────────────────────────── */}
-
-      {/* Calculation */}
-      {isCalc && (
-        <div className="bg-white border border-border rounded-2xl px-5 py-5 space-y-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-ink-4">Your Answer</p>
-
-          {/* Student's filled values with correct/wrong colouring */}
+      {/* Answer area */}
+      {isCalc ? (
+        <div className="bg-white border border-border rounded-2xl px-5 py-5">
+          <p className="text-sm font-semibold text-ink-3 mb-4">Your answer</p>
           <MathAnswerInput
             template={q.answer_template}
             values={typeof sa === 'object' && sa !== null ? sa : {}}
-            results={boxResults}
+            onChange={() => {}}
             readOnly
+            result={boxRes}
           />
-
-          {/* Show the correct answer underneath if any box was wrong */}
-          {!ok && q.answer_template?.structure?.length > 0 && (
-            <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-4">
-              <p className="text-xs font-bold text-green-700 mb-3">Correct Answer</p>
-              <MathAnswerInput
-                template={q.answer_template}
-                values={Object.fromEntries(
-                  q.answer_template.structure.map((item) => [item.id, item.answer])
-                )}
-                readOnly
-              />
-            </div>
-          )}
         </div>
-      )}
-
-      {/* True / False */}
-      {!isCalc && isTF && (
+      ) : isTF ? (
         <div className="grid grid-cols-2 gap-3">
           {['True', 'False'].map((val) => {
-            const isCorrect = val.toLowerCase() === (q.answer ?? '').toLowerCase()
-            const isStudent = val.toLowerCase() === (sa ?? '').toLowerCase()
+            const isAns = val.toLowerCase() === (q.answer ?? '').toLowerCase()
+            const isStu = val.toLowerCase() === (sa ?? '').toString().toLowerCase()
             return (
               <div key={val} className={cn(
-                'flex flex-col items-center gap-2 py-5 rounded-2xl border-2 text-sm font-semibold',
-                isCorrect && isStudent  ? 'border-green-400 bg-green-50 text-green-700' :
-                isCorrect && !isStudent ? 'border-green-300 bg-green-50/50 text-green-600' :
-                !isCorrect && isStudent ? 'border-red-400 bg-red-50 text-red-600' :
-                                          'border-border text-ink-4'
+                'flex flex-col items-center gap-2 py-5 rounded-2xl border-2 text-base font-semibold',
+                isAns && isStu  ? 'border-success bg-success-light text-success' :
+                isAns && !isStu ? 'border-success/50 bg-success-light/50 text-success' :
+                !isAns && isStu ? 'border-danger bg-danger-light text-danger' :
+                                  'border-border text-ink-4'
               )}>
                 <span className="text-2xl">{val === 'True' ? '✅' : '❌'}</span>
                 <span>{val}</span>
-                {isCorrect && <span className="text-[10px] font-bold">✓ Correct</span>}
-                {!isCorrect && isStudent && <span className="text-[10px] font-bold">Your answer</span>}
+                {isAns  && <span className="text-xs font-bold">✓ Correct</span>}
+                {!isAns && isStu && <span className="text-xs font-bold">Your answer</span>}
               </div>
             )
           })}
         </div>
-      )}
-
-      {/* MCQ */}
-      {!isCalc && !isTF && q.options?.length > 0 && (
+      ) : (
         <div className="flex flex-col gap-2">
-          {q.options.map((opt, oi) => {
+          {q.options?.map((opt, oi) => {
             const letter    = String.fromCharCode(65 + oi)
             const optLetter = opt.charAt(0)
-            const isCorrect = optLetter === q.answer || letter === q.answer
+            const isAnswer  = optLetter === q.answer || letter === q.answer
             const isStudent = optLetter === sa        || letter === sa
-            let badge = null
-            let cls   = 'border-border bg-white text-ink-3'
-            if      (isCorrect && isStudent)  { cls = 'border-green-400 bg-green-50 text-green-700 font-semibold'; badge = '✓ Correct' }
-            else if (isCorrect)               { cls = 'border-green-300 bg-green-50/60 text-green-600';            badge = '✓ Correct answer' }
-            else if (isStudent)               { cls = 'border-red-400 bg-red-50 text-red-600 font-semibold';       badge = '✗ Your answer' }
+            const badge     = isAnswer && isStudent ? '✓ Correct' : isAnswer ? '✓ Correct answer' : isStudent ? '✗ Your answer' : null
             return (
               <div key={oi} className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm transition-colors', cls
+                'flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm',
+                isAnswer && isStudent  ? 'border-success bg-success-light text-success font-semibold' :
+                isAnswer && !isStudent ? 'border-success/40 bg-success-light/50 text-success' :
+                isStudent && !isAnswer ? 'border-danger bg-danger-light text-danger font-semibold' :
+                                         'border-border text-ink-4'
               )}>
                 <span className={cn(
                   'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
-                  isCorrect && isStudent ? 'bg-green-500 text-white' :
-                  isCorrect             ? 'bg-green-400 text-white' :
+                  isAnswer && isStudent ? 'bg-green-500 text-white' :
+                  isAnswer              ? 'bg-green-400 text-white' :
                   isStudent             ? 'bg-red-500   text-white' : 'bg-surface text-ink-4'
                 )}>
                   {letter}
@@ -424,7 +391,6 @@ function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, s
           showClosing
         />
       )}
-
     </div>
   )
 }
@@ -771,20 +737,17 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
   const isCalc = isCalcQ(q)
   const isTF   = isTFQ(q)
 
-  // answered count — calculation counts only when all boxes filled
   const answered = questions.filter((ques, i) => {
     if (isCalcQ(ques)) return calcFullyAnswered(answers[i], ques.answer_template)
     return answers[i] !== undefined && answers[i] !== ''
   }).length
 
-  // Next button enabled?
   const hasAnswer = isCalc
     ? calcFullyAnswered(answers[current], q?.answer_template)
     : answers[current] !== undefined
 
   useCopyProtection(true)
 
-  // Auto-submit when timer fires
   useEffect(() => {
     if (timedOut && !submitting) doSubmit()
   }, [timedOut]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -805,7 +768,6 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
     }
   }, [answered, questions.length, submitting, doSubmit])
 
-  // Update a single box inside a calculation answer object
   const handleCalcChange = useCallback((boxId, val) => {
     setAnswers((prev) => ({
       ...prev,
@@ -823,7 +785,6 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
       className="min-h-screen bg-[#f7f7f5] flex flex-col"
       style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
     >
-
       {showConfirm && (
         <SubmitConfirmModal
           answered={answered}
@@ -870,12 +831,7 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
               <p className="font-bold text-sm">5 minutes remaining!</p>
               <p className="text-xs opacity-70 mt-0.5">Review your answers now.</p>
             </div>
-            <button
-              onClick={() => setShowWarn(false)}
-              className="text-xl font-bold opacity-60 hover:opacity-100"
-            >
-              ×
-            </button>
+            <button onClick={() => setShowWarn(false)} className="text-xl font-bold opacity-60 hover:opacity-100">×</button>
           </div>
         </div>
       )}
@@ -902,7 +858,7 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
         })}
       </div>
 
-      {/* Question body — key forces full remount per question (resets hint open state) */}
+      {/* Question body */}
       <div key={current} className="flex-1 px-4 py-7 max-w-2xl mx-auto w-full">
         <div className="flex flex-col gap-5">
 
@@ -919,7 +875,7 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
           {/* Hint */}
           <HintButton key={`test-hint-${current}`} hint={q.hint} />
 
-          {/* ── Answer input ──────────────────────────────────────────────────── */}
+          {/* Answer input */}
           <div className="flex flex-col gap-3">
 
             {/* Calculation */}
@@ -939,7 +895,6 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
                   onChange={handleCalcChange}
                   readOnly={false}
                 />
-                {/* Contextual micro-instructions */}
                 {q.answer_template?.type === 'fraction' && (
                   <p className="text-xs text-ink-4 mt-4">
                     Enter the numerator (top number) and denominator (bottom number).
@@ -950,42 +905,31 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
                     Solve for each variable and enter the values in the boxes.
                   </p>
                 )}
-                {q.answer_template?.type === 'two_roots' && (
-                  <p className="text-xs text-ink-4 mt-4">
-                    Enter both roots of the equation.
-                  </p>
-                )}
-                {q.answer_template?.type === 'scientific' && (
-                  <p className="text-xs text-ink-4 mt-4">
-                    Enter the coefficient and the power of 10.
-                  </p>
-                )}
               </div>
             )}
 
             {/* True / False */}
-            {!isCalc && isTF && (
-              <div className="grid grid-cols-2 gap-4">
+            {isTF && !isCalc && (
+              <div className="grid grid-cols-2 gap-3">
                 {['True', 'False'].map((val) => {
                   const sel = answers[current] === val
                   return (
-                    <button key={val}
+                    <button
+                      key={val}
                       onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
                       className={cn(
-                        'flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 transition-all',
+                        'flex flex-col items-center gap-2 py-6 rounded-2xl border-2 transition-all font-semibold',
                         sel
                           ? val === 'True'
-                            ? 'border-green-400 bg-green-50 shadow-sm'
-                            : 'border-red-400 bg-red-50 shadow-sm'
+                            ? 'border-success bg-success-light'
+                            : 'border-danger bg-danger-light'
                           : 'border-border bg-white hover:border-brand-300'
-                      )}>
-                      {val === 'True'
-                        ? <CheckCircle2 size={32} className={sel ? 'text-green-500' : 'text-ink-4'} />
-                        : <XCircle      size={32} className={sel ? 'text-red-500'   : 'text-ink-4'} />
-                      }
+                      )}
+                    >
+                      <span className="text-3xl">{val === 'True' ? '✅' : '❌'}</span>
                       <span className={cn(
                         'text-lg font-bold',
-                        sel ? (val === 'True' ? 'text-green-600' : 'text-red-600') : 'text-ink'
+                        sel ? (val === 'True' ? 'text-success' : 'text-danger') : 'text-ink'
                       )}>
                         {val}
                       </span>
@@ -997,33 +941,37 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
 
             {/* MCQ */}
             {!isCalc && !isTF && (
-              q.options?.map((opt, oi) => {
-                const letter = String.fromCharCode(65 + oi)
-                const sel    = answers[current] === letter
-                return (
-                  <button key={oi}
-                    onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
-                    className={cn(
-                      'flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all',
-                      sel
-                        ? 'border-brand-600 bg-surface shadow-sm'
-                        : 'border-border bg-white hover:border-brand-300'
-                    )}>
-                    <span className={cn(
-                      'w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors',
-                      sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4'
-                    )}>
-                      {letter}
-                    </span>
-                    <span className={cn(
-                      'text-sm font-medium leading-relaxed flex-1',
-                      sel ? 'text-brand-800' : 'text-ink'
-                    )}>
-                      <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                    </span>
-                  </button>
-                )
-              })
+              <div className="flex flex-col gap-3">
+                {q.options?.map((opt, oi) => {
+                  const letter    = String.fromCharCode(65 + oi)
+                  const optLetter = opt.charAt(0)
+                  const sel       = answers[current] === letter || answers[current] === optLetter
+                  return (
+                    <button
+                      key={oi}
+                      onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
+                      className={cn(
+                        'flex items-center gap-3 w-full px-4 py-4 rounded-2xl border-2 text-left transition-all',
+                        sel
+                          ? 'border-brand-600 bg-surface shadow-sm'
+                          : 'border-border bg-white hover:border-brand-300'
+                      )}>
+                      <span className={cn(
+                        'w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors',
+                        sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4'
+                      )}>
+                        {letter}
+                      </span>
+                      <span className={cn(
+                        'text-sm font-medium leading-relaxed flex-1',
+                        sel ? 'text-brand-800' : 'text-ink'
+                      )}>
+                        <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             )}
 
           </div>
@@ -1088,6 +1036,16 @@ export default function StudentAssessment({ assessment }) {
     }
     const score = Math.round((correct / questions.length) * 100)
 
+
+    // ✅ REPLACE WITH
+    // Convert index-keyed answers { 0: 'A', 1: {boxId: val} }
+    // to UUID-keyed { [question.id]: value } — route.js looks up by question.id
+    const answersById = {}
+    for (let i = 0; i < questions.length; i++) {
+      const val = answersMap[i]
+      answersById[questions[i].id] = (val !== undefined && val !== null) ? val : ''
+    }
+
     // Fire-and-forget — server re-scores for integrity; this is just for speed
     fetch('/api/submit', {
       method:  'POST',
@@ -1095,7 +1053,7 @@ export default function StudentAssessment({ assessment }) {
       body: JSON.stringify({
         assessmentId:  assessment.id,
         studentName,
-        answers:       Array.from({ length: questions.length }, (_, i) => answersMap[i] ?? ''),
+        answers:       answersById,
         score,
         total:         questions.length,
         sessionKey:    sessionKey.current,
@@ -1103,7 +1061,7 @@ export default function StudentAssessment({ assessment }) {
       }),
     }).catch(console.error)
 
-    // Persist to localStorage for past-attempt review
+    // Persist to localStorage for past-attempt review (keep index-keyed locally)
     saveToHistory({
       slug:        assessment.slug,
       title:       assessment.title,
@@ -1115,7 +1073,6 @@ export default function StudentAssessment({ assessment }) {
       completedAt: new Date().toISOString(),
       answers:     answersMap,
       questions:   questions.map((q) => ({
-        // Store both field names so qText() works on replay
         text:            qText(q),
         question_text:   qText(q),
         options:         q.options,

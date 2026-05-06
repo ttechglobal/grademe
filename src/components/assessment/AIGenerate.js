@@ -398,7 +398,7 @@ export default function AIGenerate({ setupData = null, onImport, questionType = 
   if (parsed.length === 0) {
     const questionTypeLabel =
       questionType === 'true_false'   ? '✅ True or False' :
-      questionType === 'calculation'  ? '🔢 Calculation' :
+      questionType === 'calculation'  ? '🔢 Fill-in Answer' :
                                         '🔘 Multiple Choice'
 
     const pastePlaceholder =

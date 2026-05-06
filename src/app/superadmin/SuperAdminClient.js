@@ -1,23 +1,40 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import {
-  LayoutDashboard, Users, ClipboardList,
-  BookOpen, BarChart2, Activity,
-  RefreshCw, Calendar, Menu, X,
-  TrendingUp, ChevronRight,
+  LayoutDashboard, Users, ClipboardList, BookOpen,
+  BarChart2, Activity, RefreshCw, Menu, X,
+  TrendingUp, TrendingDown, Zap, ChevronRight,
+  Search, ChevronDown, ChevronUp, ArrowUpDown,
+  Sparkles, AlertTriangle, CheckCircle2, Clock,
+  Target, Eye, Filter,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// ── Sidebar config ─────────────────────────────────────────────────────────
+// ─── Design tokens (matching GradeMee brand) ──────────────────────────────────
+const C = {
+  ink:     '#0d1b1b',
+  ink3:    '#4a6060',
+  ink4:    '#7a9898',
+  surface: '#f2f8f8',
+  border:  '#d8ecec',
+  brand:   '#217070',
+  brand8:  '#0f2e2e',
+  brand9:  '#0a1f1f',
+  amber:   '#f5a623',
+  success: '#2da44e',
+  danger:  '#e5534b',
+  teal2:   '#1a8f8f',
+}
+
+// ─── Nav config ───────────────────────────────────────────────────────────────
 const NAV = [
-  { id: 'overview',    label: 'Overview',              icon: LayoutDashboard },
-  { id: 'tutors',      label: 'Tutors',                icon: Users           },
-  { id: 'students',    label: 'Students & Submissions', icon: Activity        },
-  { id: 'assessments', label: 'Assessments',           icon: ClipboardList   },
-  { id: 'onboarding',  label: 'Onboarding Data',       icon: BookOpen        },
-  { id: 'engagement',  label: 'Engagement',            icon: BarChart2       },
+  { id: 'overview',  label: 'Overview',   icon: LayoutDashboard },
+  { id: 'tutors',    label: 'Tutors',     icon: Users           },
+  { id: 'usage',     label: 'AI Usage',   icon: Sparkles        },
+  { id: 'assessments', label: 'Assessments', icon: ClipboardList },
+  { id: 'engagement', label: 'Engagement', icon: BarChart2      },
 ]
 
 const FILTERS = [
@@ -27,221 +44,227 @@ const FILTERS = [
   { id: 'last_month', label: 'Last Month' },
   { id: 'year',       label: 'This Year'  },
   { id: 'all',        label: 'All Time'   },
-  { id: 'custom',     label: 'Custom'     },
 ]
 
-// ── Chart helpers ──────────────────────────────────────────────────────────
-function buildChart(dates, filter) {
-  const now = new Date()
-  const items = dates.map((d) => ({ created_at: d }))
-
-  if (filter === 'today') {
-    return Array.from({ length: 12 }, (_, i) => {
-      const h = i * 2
-      return {
-        label: `${h}h`,
-        count: items.filter((a) => {
-          const d = new Date(a.created_at)
-          return d.getHours() >= h && d.getHours() < h + 2 && d.toDateString() === now.toDateString()
-        }).length,
-      }
-    })
-  }
-  if (filter === 'week') {
-    return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((label, di) => ({
-      label,
-      count: items.filter((a) => new Date(a.created_at).getDay() === di).length,
-    }))
-  }
-  if (filter === 'month' || filter === 'last_month') {
-    return Array.from({ length: 4 }, (_, i) => ({
-      label: `W${i + 1}`,
-      count: items.filter((a) => {
-        const d = new Date(a.created_at).getDate()
-        return d >= i * 7 + 1 && d <= (i + 1) * 7
-      }).length,
-    }))
-  }
-  if (filter === 'year') {
-    return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((label, mi) => ({
-      label,
-      count: items.filter((a) => new Date(a.created_at).getMonth() === mi).length,
-    }))
-  }
-  return Array.from({ length: 8 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (7 - i), 1)
-    return {
-      label: d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
-      count: items.filter((a) => {
-        const ad = new Date(a.created_at)
-        return ad.getMonth() === d.getMonth() && ad.getFullYear() === d.getFullYear()
-      }).length,
-    }
-  })
+// ─── Segment config ───────────────────────────────────────────────────────────
+const SEGMENTS = {
+  power:       { label: 'Power User',   color: C.amber,   bg: '#fff8ee', icon: '⚡' },
+  active:      { label: 'Active',       color: C.success, bg: '#e8f9ed', icon: '✅' },
+  tried:       { label: 'Tried AI',     color: C.brand,   bg: '#e8f4f4', icon: '🔬' },
+  manual_only: { label: 'Manual Only',  color: C.ink3,    bg: '#f2f8f8', icon: '✏️' },
+  inactive:    { label: 'Inactive',     color: C.danger,  bg: '#fef0ef', icon: '💤' },
 }
 
-// ── UI Components ──────────────────────────────────────────────────────────
-function StatCard({ icon: Icon, label, value, sub, accent = '#4f46e5' }) {
-  return (
-    <div className="bg-white border border-[#e5e5e0] rounded-2xl p-6">
-      <div className="flex items-start justify-between mb-4">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: `${accent}15` }}
-        >
-          <Icon size={17} style={{ color: accent }} />
-        </div>
-      </div>
-      <p className="font-display text-3xl font-extrabold text-[#1a1a2e] mb-1">
-        {(value ?? 0).toLocaleString()}
-      </p>
-      <p className="text-xs font-bold text-[#9ca3af] uppercase tracking-widest">{label}</p>
-      {sub && <p className="text-xs text-[#9ca3af] mt-1">{sub}</p>}
-    </div>
-  )
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function relTime(iso) {
+  if (!iso) return '—'
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1)   return 'just now'
+  if (m < 60)  return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24)  return `${h}h ago`
+  const d = Math.floor(h / 24)
+  if (d < 30)  return `${d}d ago`
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function BarChart({ data, title, color = '#4f46e5' }) {
-  if (!data?.length) return null
-  const max = Math.max(...data.map((d) => d.count), 1)
-  return (
-    <div className="bg-white border border-[#e5e5e0] rounded-2xl p-6">
-      <p className="text-sm font-bold text-[#1a1a2e] mb-5">{title}</p>
-      <div className="flex items-end gap-1.5 h-32">
-        {data.map((d, i) => {
-          const pct = (d.count / max) * 100
-          return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
-              <div
-                className="absolute bottom-full mb-2 bg-[#1a1a2e] text-white text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10"
-              >
-                {d.label}: {d.count}
-              </div>
-              <div
-                className="w-full rounded-t-md transition-all duration-500"
-                style={{
-                  height:      `${Math.max(pct, d.count > 0 ? 4 : 0)}%`,
-                  background:  color,
-                  minHeight:   d.count > 0 ? '4px' : '0',
-                  maxHeight:   '100%',
-                }}
-              />
-              <span className="text-[9px] text-[#9ca3af] text-center leading-none">{d.label}</span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
+function fmtDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function HorizBar({ label, count, total, color = '#4f46e5' }) {
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0
+function num(n) {
+  if (n === null || n === undefined) return '—'
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return String(n)
+}
+
+function pct(n, total) {
+  if (!total) return 0
+  return Math.round((n / total) * 100)
+}
+
+// ─── Reusable UI components ───────────────────────────────────────────────────
+
+function KPICard({ label, value, sub, delta, accent = C.brand, icon: Icon }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-[#1a1a2e] capitalize">
-          {label.replace(/_/g, ' ')}
+    <div style={{
+      background: 'white',
+      border:     `1px solid ${C.border}`,
+      borderRadius: 16,
+      padding: '20px 24px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Accent strip */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+        background: accent, borderRadius: '16px 16px 0 0',
+      }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: C.ink4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {label}
         </span>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-[#1a1a2e] tabular-nums">{count.toLocaleString()}</span>
-          <span className="text-xs text-[#9ca3af] w-9 text-right tabular-nums">{pct}%</span>
+        {Icon && (
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: C.surface, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon size={15} color={accent} />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div style={{ fontSize: 32, fontWeight: 800, color: C.ink, lineHeight: 1, fontFamily: 'Nunito, sans-serif' }}>
+          {value ?? '—'}
+        </div>
+        {(sub || delta !== undefined) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            {sub && <span style={{ fontSize: 12, color: C.ink4 }}>{sub}</span>}
+            {delta !== undefined && (
+              <span style={{
+                fontSize: 11, fontWeight: 700,
+                color:   delta >= 0 ? C.success : C.danger,
+                display: 'flex', alignItems: 'center', gap: 2,
+              }}>
+                {delta >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                {Math.abs(delta)}%
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function HorizBar({ label, count, total, color = C.brand }) {
+  const p = total > 0 ? Math.round((count / total) * 100) : 0
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: C.ink, fontWeight: 500, textTransform: 'capitalize' }}>
+          {String(label).replace(/_/g, ' ')}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{count.toLocaleString()}</span>
+          <span style={{ fontSize: 11, color: C.ink4, width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p}%</span>
         </div>
       </div>
-      <div className="h-2 bg-[#f0f0ec] rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${pct}%`, background: color }}
-        />
+      <div style={{ height: 6, background: C.surface, borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${p}%`, background: color, borderRadius: 99, transition: 'width 0.6s ease' }} />
       </div>
+    </div>
+  )
+}
+
+function InsightChip({ icon, text, color = C.brand }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '8px 14px', borderRadius: 10,
+      background: color + '15', border: `1px solid ${color}30`,
+    }}>
+      <span style={{ fontSize: 14 }}>{icon}</span>
+      <span style={{ fontSize: 13, color, fontWeight: 600 }}>{text}</span>
     </div>
   )
 }
 
 function SectionHeader({ title, sub }) {
   return (
-    <div className="mb-6">
-      <h2 className="font-display text-xl font-bold text-[#1a1a2e]">{title}</h2>
-      {sub && <p className="text-sm text-[#9ca3af] mt-0.5">{sub}</p>}
+    <div style={{ marginBottom: 4 }}>
+      <h2 style={{ fontSize: 20, fontWeight: 800, color: C.ink, margin: 0, fontFamily: 'Nunito, sans-serif' }}>{title}</h2>
+      {sub && <p style={{ fontSize: 13, color: C.ink4, marginTop: 4 }}>{sub}</p>}
     </div>
   )
 }
 
-function EmptyState({ message }) {
+function Card({ children, style = {} }) {
   return (
-    <div className="bg-white border border-[#e5e5e0] rounded-2xl p-10 text-center">
-      <p className="text-sm text-[#9ca3af]">{message}</p>
+    <div style={{
+      background: 'white', border: `1px solid ${C.border}`,
+      borderRadius: 16, padding: 24, ...style,
+    }}>
+      {children}
     </div>
   )
 }
 
-// ── Sidebar ────────────────────────────────────────────────────────────────
+function SegmentBadge({ segment }) {
+  const s = SEGMENTS[segment] ?? SEGMENTS.inactive
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '3px 10px', borderRadius: 99,
+      background: s.bg, color: s.color,
+      fontSize: 11, fontWeight: 700,
+      whiteSpace: 'nowrap',
+    }}>
+      {s.icon} {s.label}
+    </span>
+  )
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
 function Sidebar({ active, onNav, open, onClose }) {
   return (
     <>
-      {/* Mobile overlay */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
           onClick={onClose}
+          style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.5)' }}
+          className="md:hidden"
         />
       )}
-
-      <aside className={cn(
-        'fixed top-0 left-0 bottom-0 z-50 w-[220px] bg-[#1a1a2e] flex flex-col transition-transform duration-200',
-        'md:translate-x-0 md:static md:z-auto',
-        open ? 'translate-x-0' : '-translate-x-full'
-      )}>
-
+      <aside style={{
+        width: 220, background: C.brand9, display: 'flex', flexDirection: 'column',
+        flexShrink: 0, position: 'sticky', top: 0, height: '100vh',
+      }} className={cn('hidden md:flex')}>
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-white/5 flex items-center justify-between">
-          <div>
-            <div className="font-display text-lg font-extrabold">
-              <span className="text-white">Grade</span>
-              <span className="text-[#f5a623]">Mee</span>
-            </div>
-            <p className="text-[10px] text-white/30 font-semibold uppercase tracking-widest mt-0.5">
-              Admin Panel
-            </p>
+        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ fontFamily: 'Nunito, sans-serif', fontSize: 20, fontWeight: 800 }}>
+            <span style={{ color: 'white' }}>Grade</span>
+            <span style={{ color: C.amber }}>Mee</span>
           </div>
-          <button onClick={onClose} className="md:hidden text-white/40 hover:text-white">
-            <X size={16} />
-          </button>
+          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 2, fontWeight: 700 }}>
+            Admin Console
+          </p>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-3 overflow-y-auto">
+        <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
           {NAV.map(({ id, label, icon: Icon }) => {
             const isActive = active === id
             return (
               <button
                 key={id}
-                onClick={() => { onNav(id); onClose() }}
-                className={cn(
-                  'w-full flex items-center gap-3 px-5 py-2.5 text-sm transition-colors relative',
-                  isActive
-                    ? 'text-white font-semibold bg-white/8'
-                    : 'text-white/40 hover:text-white/70 hover:bg-white/5'
-                )}
+                onClick={() => onNav(id)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 20px', fontSize: 13, fontWeight: isActive ? 700 : 500,
+                  color: isActive ? 'white' : 'rgba(255,255,255,0.4)',
+                  background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  border: 'none', cursor: 'pointer', textAlign: 'left',
+                  transition: 'all 0.15s', position: 'relative',
+                  borderLeft: isActive ? `3px solid ${C.amber}` : '3px solid transparent',
+                }}
               >
-                {isActive && (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-[#f5a623] rounded-r-full" />
-                )}
-                <Icon size={15} className="flex-shrink-0" />
+                <Icon size={15} />
                 {label}
               </button>
             )
           })}
         </nav>
 
-        {/* Bottom links */}
-        <div className="p-4 border-t border-white/5 flex flex-col gap-2">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 text-xs text-white/30 hover:text-white/60 transition-colors"
-          >
-            <ChevronRight size={12} />
-            Go to App
+        <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.3)', textDecoration: 'none' }}>
+            <ChevronRight size={12} /> Back to App
           </Link>
         </div>
       </aside>
@@ -249,145 +272,702 @@ function Sidebar({ active, onNav, open, onClose }) {
   )
 }
 
-// ── Filter bar ─────────────────────────────────────────────────────────────
-function FilterBar({ filter, setFilter, customStart, setCustomStart, customEnd, setCustomEnd, onApply }) {
+// ─── Overview section ─────────────────────────────────────────────────────────
+
+function OverviewSection({ totals, period, tutors, filterLabel }) {
+  if (!totals || !period) return null
+
+  const aiUsers     = (tutors ?? []).filter((t) => t.usesAI).length
+  const powerUsers  = (tutors ?? []).filter((t) => t.segment === 'power').length
+  const neverUsedAI = (tutors ?? []).filter((t) => t.segment === 'inactive' || t.segment === 'manual_only').length
+  const aiAdoption  = totals.tutors > 0 ? pct(aiUsers, totals.tutors) : 0
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="bg-white border border-[#e5e5e0] rounded-2xl p-1.5 flex flex-wrap gap-1">
-        {FILTERS.map((f) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      <SectionHeader
+        title="Platform Overview"
+        sub="All-time health metrics — never resets"
+      />
+
+      {/* KPI grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+        <KPICard icon={Users}        label="Total Tutors"       value={num(totals.tutors)}       accent={C.brand}   sub="All-time registered" />
+        <KPICard icon={ClipboardList} label="Assessments"       value={num(totals.assessments)}  accent="#4f46e5"   sub="All-time created" />
+        <KPICard icon={Activity}     label="Student Submissions" value={num(totals.submissions)}  accent={C.success} sub="All-time" />
+        <KPICard icon={BookOpen}     label="Questions Generated" value={num(totals.questions)}    accent="#8b5cf6"   sub="All-time" />
+        <KPICard icon={Sparkles}     label="AI Adoption"        value={`${aiAdoption}%`}          accent={C.amber}   sub={`${aiUsers} of ${totals.tutors} tutors`} />
+        <KPICard icon={Zap}          label="Power Users"        value={num(powerUsers)}            accent={C.amber}   sub="≥10 AI sessions" />
+      </div>
+
+      {/* Period stats */}
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: 0 }}>Activity — {filterLabel}</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 24 }}>
+          {[
+            { label: 'New tutors',    value: period.newTutors,     color: C.brand   },
+            { label: 'Active tutors', value: period.activeTutors,  color: C.amber   },
+            { label: 'Assessments',   value: period.assessments,   color: '#4f46e5' },
+            { label: 'Submissions',   value: period.submissions,   color: C.success },
+            { label: 'Questions',     value: period.questions,     color: '#8b5cf6' },
+          ].map((s) => (
+            <div key={s.label} style={{ textAlign: 'center', padding: '12px 0' }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: 'Nunito, sans-serif' }}>
+                {num(s.value)}
+              </div>
+              <div style={{ fontSize: 12, color: C.ink4, marginTop: 4, fontWeight: 500 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Insights row */}
+      <Card style={{ background: C.brand9, border: 'none' }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>
+          Quick Insights
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          {aiAdoption >= 50 && <InsightChip icon="🚀" text={`${aiAdoption}% AI adoption — strong`} color={C.amber} />}
+          {aiAdoption < 30 && <InsightChip icon="⚠️" text={`Only ${aiAdoption}% using AI — opportunity`} color={C.danger} />}
+          {powerUsers > 0 && <InsightChip icon="⚡" text={`${powerUsers} power users driving usage`} color={C.amber} />}
+          {neverUsedAI > 0 && <InsightChip icon="📬" text={`${neverUsedAI} tutors never used AI generation`} color={C.brand2} />}
+          {period.activeTutors > 0 && <InsightChip icon="📈" text={`${period.activeTutors} active tutors this period`} color={C.success} />}
+          {totals.tutors > 0 && <InsightChip icon="🏛️" text={`${num(pct(totals.useCaseCounts?.university ?? 0, totals.tutors))}% university profile`} color="#8b5cf6" />}
+        </div>
+      </Card>
+
+      {/* Use case breakdown */}
+      {totals.useCaseCounts && (
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 20 }}>Tutor Profile Breakdown</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {[
+              { key: 'k12_tutor',  label: 'Teachers / Tutors',     color: C.brand   },
+              { key: 'university', label: 'University Lecturers',   color: '#4f46e5' },
+            ].map(({ key, label, color }) => (
+              <HorizBar
+                key={key}
+                label={label}
+                count={totals.useCaseCounts[key] ?? 0}
+                total={totals.tutors}
+                color={color}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// ─── Tutors section ───────────────────────────────────────────────────────────
+
+function TutorsSection({ tutors }) {
+  const [search,      setSearch]      = useState('')
+  const [segFilter,   setSegFilter]   = useState('all')
+  const [sortKey,     setSortKey]     = useState('joinedAt')
+  const [sortDir,     setSortDir]     = useState('desc')
+  const [selected,    setSelected]    = useState(null)
+
+  const filtered = useMemo(() => {
+    let list = tutors ?? []
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter((t) => t.name.toLowerCase().includes(q) || t.email.toLowerCase().includes(q))
+    }
+    if (segFilter !== 'all') list = list.filter((t) => t.segment === segFilter)
+
+    return [...list].sort((a, b) => {
+      let av = a[sortKey], bv = b[sortKey]
+      if (typeof av === 'string') av = av.toLowerCase()
+      if (typeof bv === 'string') bv = bv.toLowerCase()
+      if (av === null || av === undefined) return 1
+      if (bv === null || bv === undefined) return -1
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [tutors, search, segFilter, sortKey, sortDir])
+
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+
+  function SortTh({ col, label }) {
+    const active = sortKey === col
+    return (
+      <th
+        onClick={() => toggleSort(col)}
+        style={{
+          padding: '10px 16px', textAlign: 'left', fontSize: 11,
+          fontWeight: 700, color: active ? C.brand : C.ink4,
+          textTransform: 'uppercase', letterSpacing: '0.06em',
+          cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none',
+          background: C.surface,
+        }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {label}
+          {active
+            ? (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
+            : <ArrowUpDown size={10} color={C.ink4} />}
+        </span>
+      </th>
+    )
+  }
+
+  if (selected) {
+    return <TutorDetail tutor={selected} onBack={() => setSelected(null)} />
+  }
+
+  const segCounts = (tutors ?? []).reduce((acc, t) => {
+    acc[t.segment] = (acc[t.segment] ?? 0) + 1
+    return acc
+  }, {})
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <SectionHeader title="Tutor Management" sub={`${tutors?.length ?? 0} registered tutors`} />
+
+      {/* Segment filter pills */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <button
+          onClick={() => setSegFilter('all')}
+          style={{
+            padding: '6px 14px', borderRadius: 99, fontSize: 12, fontWeight: 700,
+            border: '2px solid',
+            borderColor: segFilter === 'all' ? C.brand : C.border,
+            background:  segFilter === 'all' ? C.brand : 'white',
+            color:       segFilter === 'all' ? 'white' : C.ink3,
+            cursor: 'pointer',
+          }}
+        >
+          All ({tutors?.length ?? 0})
+        </button>
+        {Object.entries(SEGMENTS).map(([key, s]) => (
           <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            className={cn(
-              'px-4 py-2 rounded-xl text-sm font-semibold transition-all',
-              filter === f.id
-                ? 'bg-[#1a1a2e] text-white shadow-sm'
-                : 'text-[#9ca3af] hover:text-[#1a1a2e] hover:bg-[#f7f7f5]'
-            )}
+            key={key}
+            onClick={() => setSegFilter(key)}
+            style={{
+              padding: '6px 14px', borderRadius: 99, fontSize: 12, fontWeight: 700,
+              border: '2px solid',
+              borderColor: segFilter === key ? s.color : C.border,
+              background:  segFilter === key ? s.bg   : 'white',
+              color:        segFilter === key ? s.color : C.ink3,
+              cursor: 'pointer',
+            }}
           >
-            {f.label}
+            {s.icon} {s.label} ({segCounts[key] ?? 0})
           </button>
         ))}
       </div>
 
-      {filter === 'custom' && (
-        <div className="flex flex-wrap items-center gap-3 bg-white border border-[#e5e5e0] rounded-2xl p-4">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-[#9ca3af] uppercase tracking-wide">From</label>
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="px-3 py-2 bg-[#f7f7f5] border border-[#e5e5e0] rounded-xl text-sm outline-none focus:border-brand-500"
-            />
+      {/* Search */}
+      <div style={{ position: 'relative', maxWidth: 360 }}>
+        <Search size={14} color={C.ink4} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or email…"
+          style={{
+            width: '100%', paddingLeft: 36, paddingRight: 16, paddingTop: 10, paddingBottom: 10,
+            border: `1px solid ${C.border}`, borderRadius: 12, fontSize: 13, color: C.ink,
+            outline: 'none', background: 'white', boxSizing: 'border-box',
+          }}
+        />
+      </div>
+
+      {/* Table */}
+      <div style={{ background: 'white', border: `1px solid ${C.border}`, borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <SortTh col="name"             label="Name"          />
+                <SortTh col="profile"          label="Type"          />
+                <SortTh col="joinedAt"         label="Joined"        />
+                <SortTh col="lastActive"       label="Last Active"   />
+                <SortTh col="totalAssessments" label="Assessments"   />
+                <SortTh col="totalQuestions"   label="Questions"     />
+                <SortTh col="aiGenSessions"    label="AI Sessions"   />
+                <th style={{ padding: '10px 16px', background: C.surface, width: 120 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: 48, textAlign: 'center', color: C.ink4, fontSize: 13 }}>
+                    No tutors match your filter.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((t, i) => (
+                  <tr
+                    key={t.id}
+                    style={{
+                      borderTop: `1px solid ${C.border}`,
+                      background: i % 2 === 0 ? 'white' : C.surface + '60',
+                    }}
+                  >
+                    <td style={{ padding: '12px 16px' }}>
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: 0 }}>{t.name}</p>
+                        <p style={{ fontSize: 11, color: C.ink4, margin: '2px 0 0' }}>{t.email}</p>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6,
+                        background: t.profile === 'university' ? '#ede9fe' : C.surface,
+                        color:      t.profile === 'university' ? '#7c3aed' : C.brand,
+                      }}>
+                        {t.profile === 'university' ? 'University' : 'K-12'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 12, color: C.ink3 }}>{fmtDate(t.joinedAt)}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 12, color: C.ink3 }}>{relTime(t.lastActive)}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.ink, textAlign: 'center' }}>{t.totalAssessments}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600, color: C.ink, textAlign: 'center' }}>{t.totalQuestions}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                      {t.aiGenSessions > 0 ? (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>⚡ {t.aiGenSessions}</span>
+                      ) : (
+                        <span style={{ fontSize: 12, color: C.ink4 }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <SegmentBadge segment={t.segment} />
+                        <button
+                          onClick={() => setSelected(t)}
+                          style={{
+                            padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                            background: C.surface, border: `1px solid ${C.border}`,
+                            color: C.brand, cursor: 'pointer',
+                          }}
+                        >
+                          View
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p style={{ fontSize: 12, color: C.ink4 }}>
+        Showing {filtered.length} of {tutors?.length ?? 0} tutors
+      </p>
+    </div>
+  )
+}
+
+// ─── Tutor detail view ────────────────────────────────────────────────────────
+
+function TutorDetail({ tutor, onBack }) {
+  const seg = SEGMENTS[tutor.segment] ?? SEGMENTS.inactive
+
+  const ACTION_LABELS = {
+    mcq_generation:          'MCQ generation',
+    true_false_generation:   'True/False generation',
+    calculation_generation:  'Fill-in generation',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Back */}
+      <button
+        onClick={onBack}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.brand, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+      >
+        ← Back to tutors
+      </button>
+
+      {/* Header */}
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 16,
+              background: C.brand, color: 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, fontWeight: 800, fontFamily: 'Nunito, sans-serif',
+              flexShrink: 0,
+            }}>
+              {tutor.name?.charAt(0)?.toUpperCase() ?? '?'}
+            </div>
+            <div>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: C.ink, margin: 0, fontFamily: 'Nunito, sans-serif' }}>{tutor.name}</h2>
+              <p style={{ fontSize: 13, color: C.ink4, margin: '4px 0 0' }}>{tutor.email}</p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: C.surface, color: C.brand }}>
+                  {tutor.profile === 'university' ? '🏛️ University' : '🎓 K-12'}
+                </span>
+                <SegmentBadge segment={tutor.segment} />
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-[#9ca3af] uppercase tracking-wide">To</label>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="px-3 py-2 bg-[#f7f7f5] border border-[#e5e5e0] rounded-xl text-sm outline-none focus:border-brand-500"
-            />
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: 12, color: C.ink4, margin: 0 }}>Joined {fmtDate(tutor.joinedAt)}</p>
+            <p style={{ fontSize: 12, color: C.ink4, margin: '4px 0 0' }}>Last active {relTime(tutor.lastActive)}</p>
           </div>
-          <button
-            onClick={onApply}
-            disabled={!customStart || !customEnd}
-            className="px-4 py-2 bg-[#1a1a2e] text-white text-sm font-bold rounded-xl hover:bg-brand-700 disabled:opacity-50 transition-colors"
-          >
-            Apply Range
-          </button>
+        </div>
+      </Card>
+
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+        {[
+          { label: 'Assessments',   value: tutor.totalAssessments, accent: '#4f46e5'  },
+          { label: 'Questions',     value: tutor.totalQuestions,   accent: '#8b5cf6'  },
+          { label: 'Submissions',   value: tutor.totalSubmissions, accent: C.success  },
+          { label: 'AI Sessions',   value: tutor.aiGenSessions,    accent: C.amber    },
+          { label: 'AI Questions',  value: tutor.aiGenQuestions,   accent: C.amber    },
+        ].map((s) => (
+          <div key={s.label} style={{
+            background: 'white', border: `1px solid ${C.border}`, borderRadius: 14,
+            padding: 18, borderTop: `3px solid ${s.accent}`,
+          }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: C.ink, fontFamily: 'Nunito, sans-serif' }}>{s.value}</div>
+            <div style={{ fontSize: 11, color: C.ink4, marginTop: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Behaviour insight */}
+      <Card style={{ background: seg.bg, border: `1px solid ${seg.color}30` }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: seg.color, margin: '0 0 8px' }}>
+          {seg.icon} {seg.label} Profile
+        </p>
+        <p style={{ fontSize: 13, color: C.ink3, margin: 0 }}>
+          {tutor.segment === 'power'       && `This tutor is a power user — ${tutor.aiGenSessions} AI sessions, ${tutor.aiGenQuestions} questions generated. High engagement.`}
+          {tutor.segment === 'active'      && `Actively using AI generation. ${tutor.aiGenSessions} sessions completed so far.`}
+          {tutor.segment === 'tried'       && `Has tried AI generation (${tutor.aiGenSessions} session${tutor.aiGenSessions !== 1 ? 's' : ''}) but hasn't returned frequently. Re-engagement opportunity.`}
+          {tutor.segment === 'manual_only' && `Creates assessments manually. ${tutor.totalAssessments} assessments created but hasn't used AI generation yet.`}
+          {tutor.segment === 'inactive'    && `No assessment or generation activity recorded. May need onboarding support.`}
+        </p>
+      </Card>
+
+      {/* Recent AI activity */}
+      {tutor.recentTransactions?.length > 0 && (
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 16 }}>Recent AI Generation Activity</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {tutor.recentTransactions.map((tx, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 14px', borderRadius: 10,
+                background: i % 2 === 0 ? C.surface : 'white',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Sparkles size={14} color={C.amber} />
+                  <span style={{ fontSize: 13, color: C.ink }}>
+                    {ACTION_LABELS[tx.action] ?? tx.action}
+                  </span>
+                  <span style={{ fontSize: 12, color: C.ink4 }}>{tx.description}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.amber }}>−{tx.amount} credits</span>
+                  <span style={{ fontSize: 11, color: C.ink4 }}>{relTime(tx.createdAt)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// ─── AI Usage section ─────────────────────────────────────────────────────────
+
+function UsageSection({ tutors }) {
+  if (!tutors) return null
+
+  const total      = tutors.length
+  const aiUsers    = tutors.filter((t) => t.usesAI)
+  const nonAI      = tutors.filter((t) => !t.usesAI)
+  const power      = tutors.filter((t) => t.segment === 'power')
+  const tried      = tutors.filter((t) => t.segment === 'tried')
+  const manualOnly = tutors.filter((t) => t.segment === 'manual_only')
+  const inactive   = tutors.filter((t) => t.segment === 'inactive')
+
+  const totalAIQuestions = tutors.reduce((acc, t) => acc + t.aiGenQuestions, 0)
+  const totalAISessions  = tutors.reduce((acc, t) => acc + t.aiGenSessions, 0)
+  const avgPerSession    = totalAISessions > 0 ? Math.round(totalAIQuestions / totalAISessions) : 0
+
+  // Sort by AI usage
+  const topUsers = [...tutors]
+    .sort((a, b) => b.aiGenQuestions - a.aiGenQuestions)
+    .slice(0, 10)
+    .filter((t) => t.aiGenQuestions > 0)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <SectionHeader title="AI Generation Usage" sub="Track how tutors are using in-app AI generation" />
+
+      {/* Top KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
+        <KPICard icon={Sparkles}  label="AI Users"          value={num(aiUsers.length)}    accent={C.amber}   sub={`${pct(aiUsers.length, total)}% of tutors`} />
+        <KPICard icon={Zap}       label="Total Sessions"    value={num(totalAISessions)}   accent={C.amber}   />
+        <KPICard icon={BookOpen}  label="AI Questions"      value={num(totalAIQuestions)}  accent="#8b5cf6"   sub="all time" />
+        <KPICard icon={Target}    label="Avg / Session"     value={avgPerSession || '—'}    accent={C.brand}   sub="questions per session" />
+        <KPICard icon={AlertTriangle} label="Never Used AI" value={num(nonAI.length)}      accent={C.danger}  sub={`${pct(nonAI.length, total)}% of tutors`} />
+      </div>
+
+      {/* Funnel breakdown */}
+      <Card>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 20 }}>Engagement Funnel</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[
+            { label: 'Power users (≥10 sessions)',      count: power.length,      color: C.amber,   icon: '⚡', desc: 'High-frequency AI users — your best advocates' },
+            { label: 'Active users (3–9 sessions)',     count: tutors.filter(t=>t.segment==='active').length, color: C.success, icon: '✅', desc: 'Regularly using AI, growing habit' },
+            { label: 'Tried once (1–2 sessions)',       count: tried.length,      color: C.brand,   icon: '🔬', desc: 'Started but not returning — re-engagement target' },
+            { label: 'Manual only (0 AI, has content)', count: manualOnly.length, color: C.ink3,    icon: '✏️', desc: 'Creating assessments but not using AI' },
+            { label: 'Inactive (no content created)',   count: inactive.length,   color: C.danger,  icon: '💤', desc: 'Signed up but never created anything' },
+          ].map((row) => (
+            <div key={row.label} style={{
+              display: 'flex', alignItems: 'center', gap: 16,
+              padding: '14px 16px', borderRadius: 12, background: C.surface,
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: 'white', border: `2px solid ${row.color}40`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20, flexShrink: 0,
+              }}>{row.icon}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{row.label}</span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: row.color, fontFamily: 'Nunito, sans-serif', flexShrink: 0 }}>
+                    {row.count}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: C.ink4, margin: '4px 0 0' }}>{row.desc}</p>
+                <div style={{ marginTop: 8, height: 4, background: 'white', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct(row.count, total)}%`, background: row.color, borderRadius: 99 }} />
+                </div>
+              </div>
+              <span style={{ fontSize: 12, color: C.ink4, flexShrink: 0 }}>
+                {pct(row.count, total)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Top users */}
+      {topUsers.length > 0 && (
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Top AI Users</h3>
+          <p style={{ fontSize: 12, color: C.ink4, marginBottom: 20 }}>Tutors generating the most questions with AI</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {topUsers.map((t, i) => (
+              <div key={t.id} style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                padding: '10px 14px', borderRadius: 10,
+                background: i % 2 === 0 ? C.surface : 'white',
+              }}>
+                <span style={{
+                  width: 24, height: 24, borderRadius: '50%', background: i < 3 ? C.amber : C.border,
+                  color: i < 3 ? 'white' : C.ink4, fontSize: 11, fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>{i + 1}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: 0, truncate: true }}>{t.name}</p>
+                  <p style={{ fontSize: 11, color: C.ink4, margin: '2px 0 0' }}>{t.email}</p>
+                </div>
+                <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.amber }}>{t.aiGenQuestions}</div>
+                    <div style={{ fontSize: 10, color: C.ink4 }}>questions</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.brand }}>{t.aiGenSessions}</div>
+                    <div style={{ fontSize: 10, color: C.ink4 }}>sessions</div>
+                  </div>
+                </div>
+                <SegmentBadge segment={t.segment} />
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// ─── Assessments section ──────────────────────────────────────────────────────
+
+function AssessmentsSection({ totals, period }) {
+  if (!totals || !period) return null
+  const subjectTotal = Object.values(period.subjectMap ?? {}).reduce((a, b) => a + b, 0)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <SectionHeader title="Assessments" sub="What subjects are being assessed and how often" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
+        <KPICard icon={ClipboardList} label="All Time"     value={num(totals.assessments)} accent="#4f46e5" />
+        <KPICard icon={ClipboardList} label="This Period"  value={num(period.assessments)} accent={C.brand} />
+        <KPICard icon={BookOpen}      label="Questions"    value={num(period.questions)}    accent="#8b5cf6" />
+        <KPICard icon={Activity}      label="Submissions"  value={num(period.submissions)}  accent={C.success} />
+      </div>
+
+      {subjectTotal > 0 && (
+        <Card>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 4 }}>Subjects</h3>
+          <p style={{ fontSize: 12, color: C.ink4, marginBottom: 20 }}>{subjectTotal} assessments in this period</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {Object.entries(period.subjectMap)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 15)
+              .map(([subject, count]) => (
+                <HorizBar key={subject} label={subject.replace(/_/g, ' ')} count={count} total={subjectTotal} color="#4f46e5" />
+              ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// ─── Engagement section ───────────────────────────────────────────────────────
+
+function EngagementSection({ period, totals, tutors, filterLabel }) {
+  if (!period || !totals) return null
+
+  const aiUsers        = (tutors ?? []).filter((t) => t.usesAI).length
+  const retention      = totals.tutors > 0 ? pct(period.activeTutors, totals.tutors) : 0
+  const aiAdoption     = totals.tutors > 0 ? pct(aiUsers, totals.tutors) : 0
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <SectionHeader title="Engagement" sub={`Platform engagement — ${filterLabel}`} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
+        <KPICard icon={TrendingUp}  label="Active Rate"     value={`${retention}%`}   accent={C.brand}   sub="of all tutors active" />
+        <KPICard icon={Sparkles}    label="AI Adoption"     value={`${aiAdoption}%`}  accent={C.amber}   sub="ever used AI gen" />
+        <KPICard icon={Users}       label="Active Tutors"   value={num(period.activeTutors)} accent={C.success} sub={`in ${filterLabel}`} />
+        <KPICard icon={Activity}    label="Unique Students" value={num(period.uniqueStudents)} accent="#ec4899" sub="approx by name" />
+      </div>
+
+      {/* Onboarding survey breakdown */}
+      {(Object.keys(period.heardMap ?? {}).length > 0 || Object.keys(period.teachMap ?? {}).length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          {Object.keys(period.heardMap ?? {}).length > 0 && (
+            <Card>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 16 }}>How they found GradeMee</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {Object.entries(period.heardMap)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([key, count]) => {
+                    const total = Object.values(period.heardMap).reduce((a, b) => a + b, 0)
+                    return <HorizBar key={key} label={key} count={count} total={total} color={C.brand} />
+                  })}
+              </div>
+            </Card>
+          )}
+          {Object.keys(period.teachMap ?? {}).length > 0 && (
+            <Card>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: C.ink, marginBottom: 16 }}>Teaching setting</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {Object.entries(period.teachMap)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([key, count]) => {
+                    const total = Object.values(period.teachMap).reduce((a, b) => a + b, 0)
+                    return <HorizBar key={key} label={key} count={count} total={total} color={C.teal2} />
+                  })}
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function SuperAdminClient({ adminEmail, adminName }) {
   const [section,     setSection]     = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [filter,      setFilter]      = useState('month')
-  const [customStart, setCustomStart] = useState('')
-  const [customEnd,   setCustomEnd]   = useState('')
 
-  const [totals,   setTotals]   = useState(null)
-  const [period,   setPeriod]   = useState(null)
-  const [loading,  setLoading]  = useState(true)
+  const [totals,  setTotals]  = useState(null)
+  const [period,  setPeriod]  = useState(null)
+  const [tutors,  setTutors]  = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [tutorsLoading, setTutorsLoading] = useState(true)
   const [lastSync, setLastSync] = useState(null)
-  const [error,    setError]    = useState('')
+  const [error,   setError]   = useState('')
 
-  const fetchData = useCallback(async (forceFilter) => {
+  // Fetch aggregate stats
+  const fetchStats = useCallback(async (f) => {
     setLoading(true)
     setError('')
-    const f = forceFilter ?? filter
-
     try {
       const [totalsRes, periodRes] = await Promise.all([
         fetch('/api/admin/stats', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ section: 'totals', adminEmail }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ section: 'totals', adminEmail }),
         }),
         fetch('/api/admin/stats', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            section: 'period',
-            filter:  f,
-            customStart,
-            customEnd,
-            adminEmail,
-          }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ section: 'period', filter: f, adminEmail }),
         }),
       ])
-
-      if (!totalsRes.ok || !periodRes.ok) {
-        const err = await totalsRes.json().catch(() => ({}))
-        throw new Error(err.error || 'Failed to load data')
-      }
-
+      if (!totalsRes.ok || !periodRes.ok) throw new Error('Failed to load data')
       const [t, p] = await Promise.all([totalsRes.json(), periodRes.json()])
-
       setTotals(t)
-      setPeriod({
-        ...p,
-        trendData: buildChart(p.assessmentDates ?? [], f),
-      })
+      setPeriod(p)
       setLastSync(new Date())
     } catch (err) {
-      console.error('Admin fetch error:', err)
       setError(err.message)
     }
-
     setLoading(false)
-  }, [filter, customStart, customEnd, adminEmail])
+  }, [adminEmail])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  // Fetch per-tutor data
+  const fetchTutors = useCallback(async () => {
+    setTutorsLoading(true)
+    try {
+      const res  = await fetch('/api/admin/tutors')
+      const data = await res.json()
+      if (res.ok) setTutors(data.tutors ?? [])
+    } catch {}
+    setTutorsLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetchStats(filter)
+    fetchTutors()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterLabel = FILTERS.find((f) => f.id === filter)?.label ?? ''
 
-  // ── Render section content ───────────────────────────────────────────────
   function renderContent() {
     if (loading) {
       return (
-        <div className="flex items-center justify-center py-24">
-          <div className="flex flex-col items-center gap-3">
-            <RefreshCw size={22} className="animate-spin text-brand-400" />
-            <p className="text-sm text-[#9ca3af]">Loading data…</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 80 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <RefreshCw size={24} color={C.brand} style={{ animation: 'spin 1s linear infinite' }} />
+            <p style={{ fontSize: 13, color: C.ink4 }}>Loading data…</p>
           </div>
         </div>
       )
     }
-
     if (error) {
       return (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
-          <p className="text-sm font-semibold text-red-600 mb-1">Failed to load data</p>
-          <p className="text-xs text-red-400">{error}</p>
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 16, padding: 32, textAlign: 'center' }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>Failed to load data</p>
+          <p style={{ fontSize: 12, color: '#ef4444' }}>{error}</p>
           <button
-            onClick={() => fetchData()}
-            className="mt-3 px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700"
+            onClick={() => fetchStats(filter)}
+            style={{ marginTop: 16, padding: '8px 20px', background: '#dc2626', color: 'white', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
           >
             Retry
           </button>
@@ -395,358 +975,118 @@ export default function SuperAdminClient({ adminEmail, adminName }) {
       )
     }
 
-    if (!period || !totals) return null
-
-    const subjectTotal = Object.values(period.subjectMap ?? {}).reduce((a, b) => a + b, 0)
-    const heardTotal   = Object.values(period.heardMap ?? {}).reduce((a, b) => a + b, 0)
-    const teachTotal   = Object.values(period.teachMap ?? {}).reduce((a, b) => a + b, 0)
-    const schoolTotal  = Object.values(period.schoolMap ?? {}).reduce((a, b) => a + b, 0)
-    const yearsTotal   = Object.values(period.yearsMap ?? {}).reduce((a, b) => a + b, 0)
-
-    if (section === 'overview') {
-      return (
-        <div className="flex flex-col gap-8">
-          {/* All-time */}
-          <div>
-            <SectionHeader
-              title="All-Time Totals"
-              sub="Cumulative numbers since GradeMee launched — never resets"
-            />
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard icon={Users}        label="Registered Tutors"   value={totals.tutors}      accent="#4f46e5" />
-              <StatCard icon={ClipboardList} label="Assessments Created" value={totals.assessments} accent="#f5a623" />
-              <StatCard icon={Activity}     label="Student Submissions"  value={totals.submissions}  accent="#2da44e" />
-              <StatCard icon={BookOpen}     label="Questions Generated"  value={totals.questions}    accent="#8b5cf6" />
-            </div>
-            {/* Credits interest counter */}
-            {totals.creditsInterest > 0 && (
-              <div className="mt-3 inline-flex items-center gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5 text-sm text-brand-700">
-                <span className="text-base">✨</span>
-                <strong>{totals.creditsInterest}</strong> tutor{totals.creditsInterest !== 1 ? 's' : ''} interested in credits
-              </div>
-            )}
-
-            {/* Use case profile breakdown */}
-            {totals.useCaseCounts && Object.keys(totals.useCaseCounts).length > 0 && (
-              <div className="mt-4 bg-white border border-border rounded-2xl p-5">
-                <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
-                  User Breakdown by Use Case
-                </p>
-                <div className="flex flex-col gap-2">
-                  {[
-                    { key: 'k12_tutor',  icon: '🎓', label: 'Teachers / Tutors'           },
-                    { key: 'university', icon: '🏛️', label: 'University Lecturers'         },
-                    { key: 'corporate',  icon: '🏢', label: 'Corporate / HR'               },
-                    { key: 'religious',  icon: '✝️', label: 'Religious Education'          },
-                    { key: 'vocational', icon: '🔧', label: 'Vocational Training'          },
-                    { key: 'other',      icon: '➕', label: 'Other'                        },
-                  ].map(({ key, icon, label }) => {
-                    const count = totals.useCaseCounts[key] ?? 0
-                    const pct   = totals.tutors > 0 ? Math.round((count / totals.tutors) * 100) : 0
-                    if (count === 0) return null
-                    return (
-                      <div key={key} className="flex items-center gap-3">
-                        <span className="text-base w-6 flex-shrink-0">{icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-sm font-medium text-ink">{label}</span>
-                            <span className="text-sm font-bold text-ink">{count} <span className="text-ink-4 font-normal text-xs">({pct}%)</span></span>
-                          </div>
-                          <div className="h-1.5 bg-border rounded-full overflow-hidden">
-                            <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Period */}
-          <div>
-            <SectionHeader
-              title={`Period: ${filterLabel}`}
-              sub="These numbers change based on the time filter above"
-            />
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              <StatCard icon={Users}        label="New Tutors"         value={period.newTutors}      sub="Signed up in period"  accent="#4f46e5" />
-              <StatCard icon={TrendingUp}   label="Active Tutors"      value={period.activeTutors}   sub="Created ≥1 assessment" accent="#f5a623" />
-              <StatCard icon={ClipboardList} label="Assessments"       value={period.assessments}    sub="Created in period"    accent="#0ea5e9" />
-              <StatCard icon={Activity}     label="Submissions"         value={period.submissions}    sub="Students submitted"   accent="#2da44e" />
-              <StatCard icon={Users}        label="Unique Students"    value={period.uniqueStudents}  sub="Approx by name"       accent="#ec4899" />
-              <StatCard icon={BookOpen}     label="Questions"          value={period.questions}       sub="Generated in period"  accent="#8b5cf6" />
-            </div>
-          </div>
-
-          {/* Trend */}
-          {period.trendData && (
-            <BarChart
-              data={period.trendData}
-              title={`Assessment creation — ${filterLabel}`}
-              color="#4f46e5"
-            />
-          )}
-        </div>
-      )
-    }
-
-    if (section === 'tutors') {
-      return (
-        <div className="flex flex-col gap-6">
-          <SectionHeader title="Tutors" sub="Registration and activity data" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard icon={Users}      label="Total Registered"  value={totals.tutors}       accent="#4f46e5" />
-            <StatCard icon={Users}      label="New in Period"     value={period.newTutors}     accent="#0ea5e9" />
-            <StatCard icon={TrendingUp} label="Active in Period"  value={period.activeTutors}  accent="#f5a623" />
-          </div>
-          {period.trendData && (
-            <BarChart data={period.trendData} title="New assessments by period" color="#4f46e5" />
-          )}
-        </div>
-      )
-    }
-
-    if (section === 'students') {
-      return (
-        <div className="flex flex-col gap-6">
-          <SectionHeader title="Students & Submissions" sub="All student activity — no personal data stored" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard icon={Activity} label="All-Time Submissions" value={totals.submissions}    accent="#2da44e" />
-            <StatCard icon={Activity} label="Period Submissions"   value={period.submissions}    accent="#0ea5e9" />
-            <StatCard icon={Users}    label="Unique Students"      value={period.uniqueStudents}  accent="#ec4899" sub="Approx by name" />
-          </div>
-        </div>
-      )
-    }
-
-    if (section === 'assessments') {
-      return (
-        <div className="flex flex-col gap-6">
-          <SectionHeader title="Assessments" sub="What subjects are being assessed and how often" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard icon={ClipboardList} label="All Time"       value={totals.assessments}    accent="#f5a623" />
-            <StatCard icon={ClipboardList} label="This Period"    value={period.assessments}    accent="#0ea5e9" />
-            <StatCard icon={BookOpen}      label="Questions Made" value={period.questions}       accent="#8b5cf6" />
-          </div>
-          {period.trendData && (
-            <BarChart data={period.trendData} title="Creation trend" color="#f5a623" />
-          )}
-          {subjectTotal > 0 ? (
-            <div className="bg-white border border-[#e5e5e0] rounded-2xl p-6">
-              <p className="text-sm font-bold text-[#1a1a2e] mb-5">
-                Subjects being assessed
-                <span className="text-xs font-normal text-[#9ca3af] ml-2">({subjectTotal} total)</span>
-              </p>
-              <div className="flex flex-col gap-3">
-                {Object.entries(period.subjectMap)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([subject, count]) => (
-                    <HorizBar key={subject} label={subject} count={count} total={subjectTotal} color="#f5a623" />
-                  ))}
-              </div>
-            </div>
-          ) : (
-            <EmptyState message="No subject data for this period" />
-          )}
-        </div>
-      )
-    }
-
-    if (section === 'onboarding') {
-      return (
-        <div className="flex flex-col gap-6">
-          <SectionHeader
-            title="Onboarding Data"
-            sub={`${period.surveyCount} tutors completed the onboarding survey`}
-          />
-
-          {period.surveyCount === 0 ? (
-            <EmptyState message="No onboarding survey responses yet. Tutors will fill this in after signing up." />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-              {/* How they heard */}
-              {heardTotal > 0 && (
-                <div className="bg-white border border-[#e5e5e0] rounded-2xl p-6">
-                  <p className="text-sm font-bold text-[#1a1a2e] mb-5">
-                    How tutors found GradeMee
-                    <span className="text-xs font-normal text-[#9ca3af] ml-2">({heardTotal} responses)</span>
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    {Object.entries(period.heardMap)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([key, count]) => (
-                        <HorizBar key={key} label={key} count={count} total={heardTotal} color="#f5a623" />
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Teaching mode */}
-              {teachTotal > 0 && (
-                <div className="bg-white border border-[#e5e5e0] rounded-2xl p-6">
-                  <p className="text-sm font-bold text-[#1a1a2e] mb-5">
-                    How tutors teach
-                    <span className="text-xs font-normal text-[#9ca3af] ml-2">({teachTotal} responses)</span>
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    {Object.entries(period.teachMap)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([key, count]) => (
-                        <HorizBar key={key} label={key.replace(/_/g, ' ')} count={count} total={teachTotal} color="#4f46e5" />
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* School type */}
-              {schoolTotal > 0 && (
-                <div className="bg-white border border-[#e5e5e0] rounded-2xl p-6">
-                  <p className="text-sm font-bold text-[#1a1a2e] mb-5">
-                    Teaching setting
-                    <span className="text-xs font-normal text-[#9ca3af] ml-2">({schoolTotal} responses)</span>
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    {Object.entries(period.schoolMap)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([key, count]) => (
-                        <HorizBar key={key} label={key} count={count} total={schoolTotal} color="#2da44e" />
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Years teaching */}
-              {yearsTotal > 0 && (
-                <div className="bg-white border border-[#e5e5e0] rounded-2xl p-6">
-                  <p className="text-sm font-bold text-[#1a1a2e] mb-5">
-                    Years of experience
-                    <span className="text-xs font-normal text-[#9ca3af] ml-2">({yearsTotal} responses)</span>
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    {Object.entries(period.yearsMap)
-                      .sort(([, a], [, b]) => b - a)
-                      .map(([key, count]) => (
-                        <HorizBar
-                          key={key}
-                          label={key.replace(/_/g, '–').replace('plus', '+')}
-                          count={count}
-                          total={yearsTotal}
-                          color="#8b5cf6"
-                        />
-                      ))}
-                  </div>
-                </div>
-              )}
-
-            </div>
-          )}
-        </div>
-      )
-    }
-
-    if (section === 'engagement') {
-      return (
-        <div className="flex flex-col gap-6">
-          <SectionHeader title="Engagement" sub="How tutors are using GradeMee over time" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <StatCard icon={TrendingUp}    label="Active Tutors (Period)"  value={period.activeTutors}   accent="#f5a623" sub="Created ≥1 assessment" />
-            <StatCard icon={ClipboardList} label="Assessments (Period)"    value={period.assessments}    accent="#4f46e5" />
-            <StatCard icon={Activity}      label="Submissions (Period)"    value={period.submissions}    accent="#2da44e" />
-            <StatCard icon={BookOpen}      label="Questions (Period)"      value={period.questions}       accent="#8b5cf6" />
-          </div>
-          {period.trendData && (
-            <BarChart data={period.trendData} title="Activity trend" color="#4f46e5" />
-          )}
-        </div>
-      )
-    }
-
+    if (section === 'overview')    return <OverviewSection    totals={totals} period={period} tutors={tutors} filterLabel={filterLabel} />
+    if (section === 'tutors')      return <TutorsSection      tutors={tutors} />
+    if (section === 'usage')       return <UsageSection       tutors={tutors} />
+    if (section === 'assessments') return <AssessmentsSection totals={totals} period={period} />
+    if (section === 'engagement')  return <EngagementSection  period={period} totals={totals} tutors={tutors} filterLabel={filterLabel} />
     return null
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5] flex">
+    <>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: 'Nunito', sans-serif; }
+        button { font-family: inherit; }
+        input  { font-family: inherit; }
+        table  { font-family: inherit; }
+      `}</style>
 
-      {/* Sidebar */}
-      <Sidebar
-        active={section}
-        onNav={setSection}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+      <div style={{ display: 'flex', minHeight: '100vh', background: C.surface }}>
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
+        {/* Sidebar (desktop) */}
+        <Sidebar active={section} onNav={setSection} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-        {/* Top bar */}
-        <div className="bg-white border-b border-[#e5e5e0] px-5 sm:px-8 h-14 flex items-center justify-between sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            {/* Mobile menu toggle */}
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="md:hidden w-9 h-9 rounded-xl bg-[#f7f7f5] border border-[#e5e5e0] flex items-center justify-center text-[#9ca3af]"
-            >
-              <Menu size={17} />
-            </button>
-            <div>
-              <span className="text-sm font-bold text-[#1a1a2e]">
+        {/* Main */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+
+          {/* Topbar */}
+          <div style={{
+            background: 'white', borderBottom: `1px solid ${C.border}`,
+            padding: '0 24px', height: 56,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            position: 'sticky', top: 0, zIndex: 30,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* Mobile menu */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="md:hidden"
+                style={{ padding: 8, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, cursor: 'pointer' }}
+              >
+                <Menu size={16} color={C.ink3} />
+              </button>
+              {/* Mobile logo */}
+              <div className="md:hidden" style={{ fontFamily: 'Nunito, sans-serif', fontSize: 16, fontWeight: 800 }}>
+                <span style={{ color: C.brand8 }}>Grade</span>
+                <span style={{ color: C.amber }}>Mee</span>
+                <span style={{ fontSize: 10, color: C.ink4, marginLeft: 6, fontWeight: 600 }}>Admin</span>
+              </div>
+              <span className="hidden md:block" style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>
                 {NAV.find((n) => n.id === section)?.label ?? 'Overview'}
               </span>
               {lastSync && (
-                <span className="text-xs text-[#9ca3af] ml-2 hidden sm:inline">
+                <span style={{ fontSize: 11, color: C.ink4 }} className="hidden sm:block">
                   · synced {lastSync.toLocaleTimeString()}
                 </span>
               )}
             </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => fetchData()}
-              disabled={loading}
-              className="flex items-center gap-1.5 text-xs font-semibold text-[#9ca3af] hover:text-[#1a1a2e] transition-colors"
-            >
-              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
-            <div className="flex items-center gap-2 text-xs text-[#9ca3af]">
-              <div className="w-6 h-6 rounded-full bg-[#4f46e5] flex items-center justify-center text-white text-[10px] font-bold">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* Filter pills */}
+              <div style={{ display: 'flex', gap: 4 }} className="hidden sm:flex">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => { setFilter(f.id); fetchStats(f.id) }}
+                    style={{
+                      padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                      border: 'none', cursor: 'pointer',
+                      background: filter === f.id ? C.brand8 : 'transparent',
+                      color:      filter === f.id ? 'white'  : C.ink4,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => { fetchStats(filter); fetchTutors() }}
+                disabled={loading}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.ink4, background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8 }}
+              >
+                <RefreshCw size={12} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
+                <span className="hidden sm:block">Refresh</span>
+              </button>
+
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%', background: C.brand,
+                color: 'white', fontSize: 13, fontWeight: 800,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
                 {adminName?.charAt(0)?.toUpperCase() ?? 'A'}
               </div>
-              <span className="hidden sm:inline max-w-[140px] truncate">{adminName}</span>
             </div>
           </div>
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 px-4 sm:px-8 py-8 flex flex-col gap-8 max-w-6xl mx-auto w-full">
+          {/* Content */}
+          <div style={{ flex: 1, padding: '28px 24px', maxWidth: 1100, width: '100%', margin: '0 auto' }}>
+            {renderContent()}
 
-          {/* Filter bar — shown on all sections */}
-          <FilterBar
-            filter={filter}
-            setFilter={setFilter}
-            customStart={customStart}
-            setCustomStart={setCustomStart}
-            customEnd={customEnd}
-            setCustomEnd={setCustomEnd}
-            onApply={() => fetchData(filter)}
-          />
-
-          {/* Section content */}
-          {renderContent()}
-
-          {/* Privacy */}
-          <div className="text-xs text-[#9ca3af] leading-relaxed border-t border-[#e5e5e0] pt-6">
-            <strong className="text-[#6b7280]">Privacy:</strong> Aggregate data only.
-            No student personal data is collected or displayed.
-            Compliant with GDPR data minimisation. Historical records are never deleted.
+            {/* Footer */}
+            <div style={{ marginTop: 40, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
+              <p style={{ fontSize: 11, color: C.ink4 }}>
+                <strong style={{ color: C.ink3 }}>Privacy:</strong> Aggregate data only. No student personal data displayed. Admin session verified server-side.
+              </p>
+            </div>
           </div>
 
         </div>
       </div>
-    </div>
+    </>
   )
 }

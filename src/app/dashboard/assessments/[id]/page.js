@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Score helpers ──────────────────────────────────────────────────────────
 
 function scoreColor(score) {
   if (score >= 75) return 'text-success'
@@ -31,16 +31,374 @@ function scoreBg(score) {
   return 'bg-danger-light text-danger'
 }
 
-// ── Inline expanded submission — replaces modal ────────────────────────────
+// ── Question type detection ────────────────────────────────────────────────
+
+function getType(q) {
+  const t = q?.question_type || q?.type || ''
+  if (t === 'calculation')                     return 'calculation'
+  if (t === 'true_false' || t === 'truefalse') return 'true_false'
+  if (t === 'stepwise')                        return 'stepwise'
+  return 'mcq'
+}
+
+// ── Answer resolution ──────────────────────────────────────────────────────
+// Handles three formats submissions may use:
+//   1. UUID-keyed:  { [questionId]: value }  — current
+//   2. Index-keyed: { "0": value }            — legacy
+//   3. Array:       [ value, value ]          — oldest legacy
+
+function resolveAnswer(answers, question, index) {
+  if (!answers) return undefined
+  if (question?.id && answers[question.id] !== undefined) return answers[question.id]
+  if (answers[index]         !== undefined) return answers[index]
+  if (answers[String(index)] !== undefined) return answers[String(index)]
+  return undefined
+}
+
+// ── Score one question correctly by type ──────────────────────────────────
+
+function scoreOne(q, sa) {
+  const typ = getType(q)
+
+  if (typ === 'calculation') {
+    const template  = q.answer_template
+    const boxValues = (typeof sa === 'object' && sa !== null) ? sa : {}
+    if (!template?.structure?.length) return false
+    return template.structure.every((item) => {
+      const sv       = (boxValues[item.id] ?? '').trim().toLowerCase()
+      const accepted = (item.accepted || [item.answer]).map((a) => String(a).trim().toLowerCase())
+      return accepted.includes(sv)
+    })
+  }
+
+  if (typ === 'true_false') {
+    if (!sa) return false
+    const correct = /^true/i.test(q.answer || '') ? 'true' : 'false'
+    const student  = /^true/i.test(String(sa))    ? 'true' : 'false'
+    return correct === student
+  }
+
+  if (typ === 'stepwise') {
+    const steps  = q.steps ?? []
+    const blanks = steps.filter((s) => s.is_blank)
+    if (!blanks.length) return false
+    const filled = (typeof sa === 'object' && sa !== null) ? sa : {}
+    return blanks.every((s) => {
+      const sv = (filled[s.id] ?? '').trim().toLowerCase()
+      return sv === (s.answer ?? '').trim().toLowerCase()
+    })
+  }
+
+  return (sa ?? '').toString().trim().toUpperCase() === (q.answer ?? '').trim().toUpperCase()
+}
+
+// ── Expandable question card (questions list — teacher view) ───────────────
+// Shows question + options + answer + collapsible explanation & hint
+
+function QuestionDetailCard({ q }) {
+  const [open, setOpen] = useState(false)
+  const typ = getType(q)
+
+  return (
+    <div className="flex-1 min-w-0">
+      {/* Question text */}
+      <p className="text-sm font-medium text-ink leading-relaxed">
+        <MathRenderer text={q.text} />
+      </p>
+
+      {/* MCQ options */}
+      {typ === 'mcq' && q.options?.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1">
+          {q.options.map((opt, oi) => {
+            const letter   = String.fromCharCode(65 + oi)
+            const isAnswer = opt.trim().charAt(0) === q.answer || letter === q.answer
+            return (
+              <p key={oi} className={cn(
+                'text-xs px-2 py-1 rounded',
+                isAnswer ? 'bg-success-light text-success font-semibold' : 'text-ink-4'
+              )}>
+                <MathRenderer text={opt} /> {isAnswer && '✓'}
+              </p>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Stepwise — blank count */}
+      {typ === 'stepwise' && q.steps?.length > 0 && (
+        <p className="text-xs text-ink-4 mt-1">
+          {q.steps.filter((s) => s.is_blank).length} blank{q.steps.filter((s) => s.is_blank).length !== 1 ? 's' : ''} · {q.steps.length} steps
+        </p>
+      )}
+
+      {/* Answer pill + hint + explanation toggle */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {q.answer && typ !== 'stepwise' && (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-success bg-success-light px-2.5 py-1 rounded-lg border border-success/20">
+            ✓ {q.answer}
+          </span>
+        )}
+        {q.hint?.trim() && (
+          <span className="text-xs text-amber font-medium bg-amber-light px-2 py-0.5 rounded-lg">
+            💡 {q.hint}
+          </span>
+        )}
+        {q.explanation?.trim() && (
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-500 transition-colors ml-auto"
+          >
+            {open ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            {open ? 'Hide explanation' : 'Show explanation'}
+          </button>
+        )}
+      </div>
+
+      {/* Explanation — collapsed by default */}
+      {open && q.explanation?.trim() && (
+        <div className="mt-3 bg-brand-50 border border-brand-200/70 rounded-xl px-4 py-3">
+          <p className="text-xs font-bold text-brand-600 uppercase tracking-widest mb-2">
+            📖 Explanation
+          </p>
+          <p className="text-sm text-brand-800 leading-relaxed">
+            <MathRenderer text={q.explanation} />
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Per-question answer display (inside student submission rows) ───────────
+// No explanations here — just the student's answer vs correct answer
+
+function QuestionAnswerCard({ q, index, sa, isCorrect }) {
+  const typ  = getType(q)
+  const text = q?.text || q?.question_text || ''
+
+  return (
+    <div className={cn(
+      'rounded-2xl border-2 overflow-hidden bg-white',
+      isCorrect ? 'border-success/25' : 'border-danger/25'
+    )}>
+
+      {/* Q header */}
+      <div className={cn(
+        'flex items-start gap-3 px-4 py-3',
+        isCorrect ? 'bg-success-light/30' : 'bg-danger-light/30'
+      )}>
+        <div className={cn(
+          'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-white',
+          isCorrect ? 'bg-success' : 'bg-danger'
+        )}>
+          {isCorrect
+            ? <Check size={12} strokeWidth={3} />
+            : <X     size={12} strokeWidth={3} />
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className="text-xs font-bold text-ink-4 mr-2">Q{index + 1}</span>
+          <span className={cn(
+            'text-xs font-semibold px-1.5 py-0.5 rounded mr-2',
+            typ === 'stepwise'    ? 'bg-purple-100 text-purple-700' :
+            typ === 'calculation' ? 'bg-brand-50 text-brand-600' :
+            typ === 'true_false'  ? 'bg-amber/10 text-amber' :
+                                    'bg-surface text-ink-4'
+          )}>
+            {typ === 'stepwise'    ? 'Stepwise'   :
+             typ === 'calculation' ? 'Fill-in'    :
+             typ === 'true_false'  ? 'True/False' : 'MCQ'}
+          </span>
+          <span className="text-sm font-semibold text-ink leading-relaxed">
+            <MathRenderer text={text} />
+          </span>
+        </div>
+      </div>
+
+      {/* Answer body — student's answer only, no explanation */}
+      <div className="px-4 py-3">
+
+        {/* MCQ */}
+        {typ === 'mcq' && q.options?.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {q.options.map((opt, oi) => {
+              const letter    = String.fromCharCode(65 + oi)
+              const optLetter = opt.trim().charAt(0)
+              const isAns     = optLetter === q.answer || letter === q.answer
+              const isStu     = sa
+                ? (optLetter === String(sa).trim() || letter === String(sa).trim())
+                : false
+
+              let rowCls = 'border-border bg-white text-ink-4'
+              let label  = null
+              if (isAns && isStu)  { rowCls = 'border-success bg-success-light text-success font-semibold'; label = '✓ Correct' }
+              else if (isAns)      { rowCls = 'border-success/60 bg-success-light/60 text-success'; label = '✓ Correct answer' }
+              else if (isStu)      { rowCls = 'border-danger bg-danger-light text-danger font-semibold'; label = '✗ Student chose' }
+
+              return (
+                <div key={oi} className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-sm transition-colors',
+                  rowCls
+                )}>
+                  <span className={cn(
+                    'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
+                    isAns ? 'bg-success text-white' : isStu ? 'bg-danger text-white' : 'bg-surface text-ink-4'
+                  )}>
+                    {letter}
+                  </span>
+                  <span className="flex-1 leading-relaxed">
+                    <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
+                  </span>
+                  {label && (
+                    <span className="text-xs font-bold ml-auto flex-shrink-0 whitespace-nowrap">{label}</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* True / False */}
+        {typ === 'true_false' && (
+          <div className="flex gap-3">
+            {['True', 'False'].map((val) => {
+              const isAns = /^true/i.test(q.answer || '') ? val === 'True' : val === 'False'
+              const isStu = sa ? (/^true/i.test(String(sa)) ? val === 'True' : val === 'False') : false
+              return (
+                <div key={val} className={cn(
+                  'flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-sm font-semibold',
+                  isAns && isStu  ? 'border-success bg-success-light text-success' :
+                  isAns && !isStu ? 'border-success/40 bg-success-light/50 text-success' :
+                  isStu && !isAns ? 'border-danger bg-danger-light text-danger' :
+                                    'border-border text-ink-4'
+                )}>
+                  <span className="text-lg">{val === 'True' ? '✅' : '❌'}</span>
+                  <span>{val}</span>
+                  {isAns && isStu  && <span className="text-xs font-bold">✓ Correct</span>}
+                  {isStu && !isAns && <span className="text-xs font-bold">✗ Student</span>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Fill-in / Calculation */}
+        {typ === 'calculation' && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold text-ink-4 uppercase tracking-wide">Student's answer</p>
+            {q.answer_template?.structure?.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                {q.answer_template.structure.map((item) => {
+                  const val      = (typeof sa === 'object' && sa) ? (sa[item.id] ?? '') : ''
+                  const accepted = (item.accepted || [item.answer]).map((a) => String(a).trim().toLowerCase())
+                  const ok       = accepted.includes(val.trim().toLowerCase())
+                  return (
+                    <div key={item.id} className="flex flex-col items-center gap-1">
+                      {item.label && <span className="text-xs text-ink-4">{item.label}</span>}
+                      <div className={cn(
+                        'px-4 py-2 rounded-xl border-2 text-sm font-bold min-w-[52px] text-center',
+                        ok ? 'border-success/40 bg-success-light text-success'
+                           : 'border-danger/40 bg-danger-light text-danger'
+                      )}>
+                        {val || '—'}
+                      </div>
+                      {!ok && val && (
+                        <span className="text-xs text-ink-4">expected: <strong>{item.answer}</strong></span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-ink-4 italic">
+                {sa ? (typeof sa === 'object' ? JSON.stringify(sa) : String(sa)) : 'No answer recorded'}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Stepwise */}
+        {typ === 'stepwise' && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold text-ink-4 uppercase tracking-wide">Student's filled blanks</p>
+            {(q.steps ?? []).filter((s) => s.is_blank).length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {(q.steps ?? []).filter((s) => s.is_blank).map((step, si) => {
+                  const filled  = (typeof sa === 'object' && sa) ? (sa[step.id] ?? '') : ''
+                  const correct = filled.trim().toLowerCase() === (step.answer ?? '').trim().toLowerCase()
+                  return (
+                    <div key={step.id} className={cn(
+                      'flex items-start gap-3 px-3 py-2.5 rounded-xl border-2 text-sm',
+                      correct ? 'border-success/40 bg-success-light/50 text-success'
+                              : 'border-danger/40 bg-danger-light/50 text-danger'
+                    )}>
+                      <span className="text-xs font-bold flex-shrink-0 mt-0.5 w-12">Step {si + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-ink-4 mb-1">
+                          {step.text.replace('___', `[${filled || '—'}]`)}
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={cn(
+                            'px-2 py-0.5 rounded-lg text-xs font-bold border',
+                            correct ? 'border-success/40 bg-success-light text-success'
+                                    : 'border-danger/40 bg-danger-light text-danger'
+                          )}>
+                            {filled || '—'}
+                          </span>
+                          {!correct && (
+                            <span className="text-xs text-ink-4">
+                              expected: <strong className="text-success">{step.answer}</strong>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold flex-shrink-0">{correct ? '✓' : '✗'}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-ink-4 italic">No blanks recorded.</p>
+            )}
+          </div>
+        )}
+
+        {/* MCQ fallback — no options stored */}
+        {typ === 'mcq' && (!q.options || q.options.length === 0) && (
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-ink-4">Student answered</span>
+              <span className={cn(
+                'text-sm font-bold px-3 py-1.5 rounded-xl border-2',
+                isCorrect ? 'border-success/40 bg-success-light text-success'
+                          : 'border-danger/40 bg-danger-light text-danger'
+              )}>
+                {sa ? String(sa) : '—'}
+              </span>
+            </div>
+            {!isCorrect && q.answer && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-ink-4">Correct answer</span>
+                <span className="text-sm font-bold px-3 py-1.5 rounded-xl border-2 border-success/40 bg-success-light text-success">
+                  {q.answer}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+
+// ── Submission row ─────────────────────────────────────────────────────────
 
 function SubmissionRow({ submission, questions, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen)
 
-  const answers = submission.answers ?? []
-  const correct = questions.filter((q, i) => {
-    const sa = (Array.isArray(answers) ? answers[i] : answers?.[i]) ?? ''
-    return sa.toString().trim().toUpperCase() === (q.answer ?? '').trim().toUpperCase()
-  }).length
+  const answers = submission.answers ?? {}
+  const correct = questions.filter((q, i) => scoreOne(q, resolveAnswer(answers, q, i))).length
 
   const pct  = submission.score ?? Math.round((correct / Math.max(questions.length, 1)) * 100)
   const date = new Date(submission.completed_at).toLocaleDateString('en-GB', {
@@ -53,43 +411,36 @@ function SubmissionRow({ submission, questions, defaultOpen = false }) {
       'border-b border-border last:border-none transition-colors',
       open ? 'bg-surface/30' : 'hover:bg-surface/20'
     )}>
-      {/* ── Row header ── */}
+
+      {/* Row header */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-4 px-5 py-4 text-left"
       >
         <Avatar name={submission.student_name} size="sm" />
-
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-ink text-sm truncate">{submission.student_name}</p>
           <p className="text-xs text-ink-4 mt-0.5">{date}</p>
         </div>
-
-        {/* Score chip */}
         <div className={cn('px-3 py-1.5 rounded-xl text-sm font-bold flex-shrink-0', scoreBg(pct))}>
           {pct}%
         </div>
-
-        {/* Correct / total */}
         <span className="text-xs text-ink-4 hidden sm:block flex-shrink-0">
           {correct}/{questions.length} correct
         </span>
-
-        {/* Tab violations badge */}
         {submission.tab_violations > 0 && (
           <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-amber bg-amber-light px-2 py-1 rounded-full flex-shrink-0">
             <AlertTriangle size={10} />
             {submission.tab_violations} tab switch{submission.tab_violations !== 1 ? 'es' : ''}
           </span>
         )}
-
         <ChevronDown
           size={16}
           className={cn('text-ink-4 flex-shrink-0 transition-transform duration-200', open && 'rotate-180')}
         />
       </button>
 
-      {/* ── Expanded answers ── */}
+      {/* Expanded answers */}
       {open && (
         <div className="px-5 pb-5 flex flex-col gap-3">
           {/* Score bar */}
@@ -106,107 +457,18 @@ function SubmissionRow({ submission, questions, defaultOpen = false }) {
             <span className="text-xs text-ink-4 flex-shrink-0">{correct} of {questions.length} correct</span>
           </div>
 
-          {/* Questions */}
+          {/* Per-question answer cards — no explanations */}
           {questions.map((q, i) => {
-            const studentAns = (Array.isArray(answers) ? answers[i] : answers?.[i]) ?? ''
-            const sa         = studentAns.toString().trim().toUpperCase()
-            const isCorrect  = sa === (q.answer ?? '').trim().toUpperCase()
-
+            const sa        = resolveAnswer(answers, q, i)
+            const isCorrect = scoreOne(q, sa)
             return (
-              <div
+              <QuestionAnswerCard
                 key={q.id ?? i}
-                className={cn(
-                  'rounded-2xl border-2 overflow-hidden bg-white',
-                  isCorrect ? 'border-success/25' : 'border-danger/25'
-                )}
-              >
-                {/* Q header */}
-                <div className={cn(
-                  'flex items-start gap-3 px-4 py-3',
-                  isCorrect ? 'bg-success-light/30' : 'bg-danger-light/30'
-                )}>
-                  <div className={cn(
-                    'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-white',
-                    isCorrect ? 'bg-success' : 'bg-danger'
-                  )}>
-                    {isCorrect
-                      ? <Check size={12} strokeWidth={3} />
-                      : <X     size={12} strokeWidth={3} />
-                    }
-                  </div>
-                  <div className="flex-1">
-                    <span className="text-xs font-bold text-ink-4 mr-2">Q{i + 1}</span>
-                    <span className="text-sm font-semibold text-ink leading-relaxed">
-                      <MathRenderer text={q.text} />
-                    </span>
-                  </div>
-                </div>
-
-                {/* MCQ options */}
-                {(q.type === 'mcq' || !q.type) && q.options?.length > 0 && (
-                  <div className="px-4 py-3 flex flex-col gap-2">
-                    {q.options.map((opt, oi) => {
-                      const letter    = String.fromCharCode(65 + oi)
-                      const optLetter = opt.charAt(0)
-                      const isAns     = optLetter === q.answer || letter === q.answer
-                      const isStu     = optLetter === sa        || letter === sa
-
-                      let rowCls = 'border-border bg-white text-ink-4'
-                      let label  = null
-
-                      if (isAns && isStu) {
-                        rowCls = 'border-success bg-success-light text-success font-semibold'
-                        label  = '✓ Correct'
-                      } else if (isAns) {
-                        rowCls = 'border-success/60 bg-success-light/60 text-success'
-                        label  = '✓ Correct answer'
-                      } else if (isStu) {
-                        rowCls = 'border-danger bg-danger-light text-danger font-semibold'
-                        label  = '✗ Student chose this'
-                      }
-
-                      return (
-                        <div
-                          key={oi}
-                          className={cn(
-                            'flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm transition-colors',
-                            rowCls
-                          )}
-                        >
-                          <span className={cn(
-                            'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
-                            isAns ? 'bg-success text-white'
-                          : isStu ? 'bg-danger text-white'
-                          :         'bg-surface text-ink-4'
-                          )}>
-                            {letter}
-                          </span>
-                          <span className="flex-1 leading-relaxed">
-                            <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                          </span>
-                          {label && (
-                            <span className="text-xs font-bold ml-auto flex-shrink-0 whitespace-nowrap">
-                              {label}
-                            </span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Explanation */}
-                {q.explanation && (
-                  <div className="mx-4 mb-3 bg-brand-50 border border-brand-200/60 rounded-xl px-4 py-3">
-                    <p className="text-xs font-bold text-brand-600 uppercase tracking-wide mb-1.5">
-                      📖 Explanation
-                    </p>
-                    <p className="text-sm text-brand-800 leading-relaxed">
-                      <MathRenderer text={q.explanation} />
-                    </p>
-                  </div>
-                )}
-              </div>
+                q={q}
+                index={i}
+                sa={sa}
+                isCorrect={isCorrect}
+              />
             )
           })}
         </div>
@@ -222,20 +484,18 @@ export default function AssessmentDetailPage({ params }) {
   const router    = useRouter()
   const { toast } = useToast()
 
-  const [assessment,   setAssessment]   = useState(null)
-  const [loading,      setLoading]      = useState(true)
-  const [deleting,     setDeleting]     = useState(false)
-  const [editingQ,     setEditingQ]     = useState(null)
-  const [copied,       setCopied]       = useState(false)
-  const [shareUrl,     setShareUrl]     = useState('')
-  const [qOpen,        setQOpen]        = useState(true)
-  const [editTitle,    setEditTitle]    = useState(false)
-  const [titleVal,     setTitleVal]     = useState('')
-  const [savingTitle,  setSavingTitle]  = useState(false)
-  // null | 'assessment' | { type: 'question', qid }
+  const [assessment,    setAssessment]   = useState(null)
+  const [loading,       setLoading]      = useState(true)
+  const [deleting,      setDeleting]     = useState(false)
+  const [editingQ,      setEditingQ]     = useState(null)
+  const [copied,        setCopied]       = useState(false)
+  const [shareUrl,      setShareUrl]     = useState('')
+  const [qOpen,         setQOpen]        = useState(true)
+  const [editTitle,     setEditTitle]    = useState(false)
+  const [titleVal,      setTitleVal]     = useState('')
+  const [savingTitle,   setSavingTitle]  = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
-  // Expand/collapse all submissions
-  const [allExpanded,  setAllExpanded]  = useState(false)
+  const [allExpanded,   setAllExpanded]  = useState(false)
 
   const loadAssessment = useCallback(async () => {
     const supabase = createClient()
@@ -244,7 +504,8 @@ export default function AssessmentDetailPage({ params }) {
       .select(`
         *,
         questions (
-          id, type, text, options, answer, hint, explanation, order_index
+          id, type, question_type, text, options, answer,
+          hint, explanation, order_index, answer_template
         ),
         submissions (
           id, student_name, score, total, completed_at, answers, tab_violations
@@ -272,7 +533,6 @@ export default function AssessmentDetailPage({ params }) {
     if (!id) return
     loadAssessment()
 
-    // Real-time updates
     const supabase = createClient()
     const channel  = supabase
       .channel(`assessment-detail-${id}`)
@@ -325,10 +585,7 @@ export default function AssessmentDetailPage({ params }) {
     setTimeout(() => setCopied(false), 2500)
   }
 
-  // ── Preview — opens student view in new tab with ?preview=1 param ────────
-  const openPreview = () => {
-    window.open(`/t/${assessment.slug}?preview=1`, '_blank')
-  }
+  const openPreview = () => window.open(`/t/${assessment.slug}?preview=1`, '_blank')
 
   if (loading) {
     return (
@@ -362,8 +619,6 @@ export default function AssessmentDetailPage({ params }) {
                 {assessment.subject} · {assessment.class_level?.toUpperCase()}
                 {assessment.assessment_type && ` · ${assessment.assessment_type}`}
               </p>
-
-              {/* Editable title */}
               {editTitle ? (
                 <div className="flex items-center gap-2">
                   <input
@@ -389,22 +644,16 @@ export default function AssessmentDetailPage({ params }) {
                   </button>
                 </div>
               )}
-
               {assessment.topic && <p className="text-sm text-ink-3 mt-1">{assessment.topic}</p>}
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* ── Preview button ───────────────────────────────────── */}
               <button
                 onClick={openPreview}
                 className="inline-flex items-center gap-2 bg-surface border border-border text-ink text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-border transition-colors"
               >
-                <Eye size={14} />
-                Preview
+                <Eye size={14} /> Preview
               </button>
-
-              {/* Open student link */}
               <a
                 href={`/t/${assessment.slug}`}
                 target="_blank"
@@ -413,8 +662,6 @@ export default function AssessmentDetailPage({ params }) {
               >
                 Share Link
               </a>
-
-              {/* Delete — tap once to arm, tap again to confirm */}
               <button
                 onClick={handleDeleteAssessment}
                 disabled={deleting}
@@ -434,9 +681,9 @@ export default function AssessmentDetailPage({ params }) {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-border">
             {[
-              { icon: BookOpen,  label: 'Questions',  value: assessment.questions.length },
-              { icon: Users,     label: 'Responses',  value: assessment.submissions.length },
-              { icon: BarChart2, label: 'Avg Score',  value: avgScore !== null ? `${avgScore}%` : '—' },
+              { icon: BookOpen,  label: 'Questions', value: assessment.questions.length },
+              { icon: Users,     label: 'Responses', value: assessment.submissions.length },
+              { icon: BarChart2, label: 'Avg Score', value: avgScore !== null ? `${avgScore}%` : '—' },
             ].map((s, i) => (
               <div key={i} className="text-center">
                 <div className="flex items-center justify-center gap-1.5 text-brand-500 mb-1">
@@ -444,8 +691,7 @@ export default function AssessmentDetailPage({ params }) {
                   <span className="text-xs font-semibold uppercase tracking-wide">{s.label}</span>
                 </div>
                 <p className={cn('font-display text-3xl font-bold',
-                  s.label === 'Avg Score' && avgScore !== null
-                    ? scoreColor(avgScore) : 'text-ink'
+                  s.label === 'Avg Score' && avgScore !== null ? scoreColor(avgScore) : 'text-ink'
                 )}>
                   {s.value}
                 </p>
@@ -476,7 +722,7 @@ export default function AssessmentDetailPage({ params }) {
           <p className="text-xs text-ink-4">Edits to questions reflect on the live link immediately.</p>
         </div>
 
-        {/* Questions */}
+        {/* Questions list — with expandable answer + explanation per question */}
         <div>
           <button onClick={() => setQOpen(!qOpen)} className="w-full flex items-center justify-between mb-3">
             <h2 className="font-display text-lg font-bold text-ink">
@@ -491,39 +737,20 @@ export default function AssessmentDetailPage({ params }) {
                 <div className="p-8 text-center text-sm text-ink-4">No questions yet.</div>
               ) : (
                 assessment.questions.map((q, i) => (
-                  <div key={q.id}
-                    className="flex items-start gap-4 px-5 py-4 border-b border-border last:border-none hover:bg-surface/30 transition-colors"
+                  <div
+                    key={q.id}
+                    className="flex items-start gap-4 px-5 py-4 border-b border-border last:border-none hover:bg-surface/20 transition-colors"
                   >
+                    {/* Number badge */}
                     <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                       {i + 1}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-ink leading-relaxed">
-                        <MathRenderer text={q.text} />
-                      </p>
-                      {q.type === 'mcq' && q.options?.length > 0 && (
-                        <div className="mt-2 flex flex-col gap-1">
-                          {q.options.map((opt, oi) => {
-                            const letter    = String.fromCharCode(65 + oi)
-                            const optLetter = opt.charAt(0)
-                            const isAnswer  = optLetter === q.answer || letter === q.answer
-                            return (
-                              <p key={oi} className={cn(
-                                'text-xs px-2 py-1 rounded',
-                                isAnswer ? 'bg-success-light text-success font-semibold' : 'text-ink-4'
-                              )}>
-                                <MathRenderer text={opt} /> {isAnswer && '✓'}
-                              </p>
-                            )
-                          })}
-                        </div>
-                      )}
-                      <p className="text-xs text-ink-4 mt-1">
-                        Answer: <span className="font-semibold text-success">{q.answer}</span>
-                        {q.hint && <span className="ml-3 text-amber">💡 Hint</span>}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+
+                    {/* Question detail — text, options, answer pill, collapsible explanation */}
+                    <QuestionDetailCard q={q} />
+
+                    {/* Edit / delete actions */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
                       <button
                         onClick={() => setEditingQ(q)}
                         className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-brand-400 hover:text-brand-600 transition-colors"
@@ -557,7 +784,6 @@ export default function AssessmentDetailPage({ params }) {
             <h2 className="font-display text-lg font-bold text-ink">
               Submissions ({assessment.submissions.length})
             </h2>
-
             {assessment.submissions.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
@@ -586,11 +812,6 @@ export default function AssessmentDetailPage({ params }) {
             </div>
           ) : (
             <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
-              {/*
-                Key on allExpanded forces SubmissionRow to remount with new defaultOpen value.
-                Using a compound key (sub.id + allExpanded) preserves individual open state
-                after the initial expand/collapse, but resets on the next Expand All / Collapse All click.
-              */}
               {assessment.submissions.map((sub) => (
                 <SubmissionRow
                   key={`${sub.id}-${allExpanded}`}
@@ -605,7 +826,6 @@ export default function AssessmentDetailPage({ params }) {
 
       </div>
 
-      {/* Edit question modal */}
       {editingQ && (
         <EditQuestionModal
           question={editingQ}

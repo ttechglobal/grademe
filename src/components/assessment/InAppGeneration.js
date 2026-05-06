@@ -9,43 +9,43 @@ import Link from 'next/link'
 function calcCost(questionType, count) { return count }
 
 const QUESTION_COUNTS = [3, 5, 10, 15, 20]
-const DIFFICULTIES    = ['easy', 'medium', 'hard']
+const DIFFICULTIES = ['easy', 'medium', 'hard']
 
 const ACADEMIC_STYLES = [
-  { id: 'standard',     label: 'Standard Academic',       desc: 'Rigorous and balanced — suitable for most university examinations' },
-  { id: 'cambridge',    label: 'Cambridge Style',         desc: 'Analytical and structured — favours application and scenario-based thinking' },
-  { id: 'oxford',       label: 'Oxford Style',            desc: 'Critical thinking focus — tests depth of understanding and reasoning' },
-  { id: 'harvard',      label: 'Harvard Style',           desc: 'Case-based and applied — practical scenarios and real-world application' },
+  { id: 'standard', label: 'Standard Academic', desc: 'Rigorous and balanced — suitable for most university examinations' },
+  { id: 'cambridge', label: 'Cambridge Style', desc: 'Analytical and structured — favours application and scenario-based thinking' },
+  { id: 'oxford', label: 'Oxford Style', desc: 'Critical thinking focus — tests depth of understanding and reasoning' },
+  { id: 'harvard', label: 'Harvard Style', desc: 'Case-based and applied — practical scenarios and real-world application' },
   { id: 'professional', label: 'Professional / Industry', desc: 'Certification-style — precise technical knowledge testing' },
 ]
 
 export default function InAppGeneration({
   onImport,
-  setupData    = {},
+  setupData = {},
   questionType = 'mcq',
-  useCase      = 'k12_tutor',
+  useCase = 'k12_tutor',
 }) {
   const { credits, loading: creditsLoading, refresh: refreshCredits } = useCredits()
   const isUniversity = useCase === 'university'
 
-  const [topic,         setTopic]         = useState('')
-  const [count,         setCount]         = useState(5)
-  const [difficulty,    setDifficulty]    = useState('medium')
-  const [extraContext,  setExtraContext]   = useState('')
+  const [topic, setTopic] = useState('')
+  const [count, setCount] = useState(5)
+  const [difficulty, setDifficulty] = useState('medium')
+  const [extraContext, setExtraContext] = useState('')
   const [academicStyle, setAcademicStyle] = useState('standard')
-  const [showAdvanced,  setShowAdvanced]  = useState(false)
-  const [generating,    setGenerating]    = useState(false)
-  const [error,         setError]         = useState('')
-  const [showBuyHint,   setShowBuyHint]   = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState('')
+  const [showBuyHint, setShowBuyHint] = useState(false)
 
-  const cost        = calcCost(questionType, count)
-  const canAfford   = creditsLoading || credits >= cost
+  const cost = calcCost(questionType, count)
+  const canAfford = creditsLoading || credits >= cost
   const canGenerate = topic.trim().length > 0 && !creditsLoading && credits >= cost && !generating
 
   const questionTypeLabel =
-    questionType === 'true_false'  ? 'True/False' :
-    questionType === 'calculation' ? 'Calculation' :
-                                     'MCQ'
+    questionType === 'true_false' ? 'True/False' :
+      questionType === 'calculation' ? 'Calculation' :
+        'MCQ'
 
   const handleGenerate = async () => {
     if (!canGenerate) return
@@ -55,28 +55,32 @@ export default function InAppGeneration({
 
     try {
       const res = await fetch('/api/generate/questions', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionType,
-          subject:           setupData.subject   || 'General',
-          topic:             topic.trim(),
-          gradeLevel:        setupData.classLevel || setupData.gradeLevel || 'General',
-          curriculum:        setupData.curriculum,
+          subject: setupData.subject || 'General',
+          topic: topic.trim(),
+          gradeLevel: setupData.classLevel || setupData.gradeLevel || 'General',
+          curriculum: setupData.curriculum,
           difficulty,
           numberOfQuestions: count,
-          additionalContext: extraContext.trim()  || undefined,
+          additionalContext: extraContext.trim() || undefined,
           useCase,
-          academicStyle:     isUniversity ? academicStyle : 'standard',
+          academicStyle: isUniversity ? academicStyle : 'standard',
         }),
       })
 
       const data = await res.json()
 
+      // ✅ AFTER — read error as string directly from generationService shape
       if (data.success && data.questions?.length > 0) {
         await refreshCredits()
         onImport?.(data.questions)
-      } else if (data.errorCode === 'INSUFFICIENT_CREDITS') {
+      } else if (
+        typeof data.error === 'string' &&
+        data.error.toLowerCase().includes('insufficient')
+      ) {
         setShowBuyHint(true)
         setError(data.error)
       } else {
