@@ -19,7 +19,7 @@ export async function POST(request) {
       topic,
       gradeLevel,
       curriculum,
-      difficulty      = 'medium',
+      difficulty      = ['medium'],
       numberOfQuestions,
       additionalContext,
       useCase         = 'k12_tutor',
@@ -33,8 +33,9 @@ export async function POST(request) {
       )
     }
 
-    // Fix 1: 'calculation' is a valid type
-    if (!['mcq', 'true_false', 'calculation'].includes(questionType)) {
+    // Fix 1: added 'calculation' and 'stepwise' to the allowed types
+    const VALID_TYPES = ['mcq', 'true_false', 'calculation', 'stepwise']
+    if (!VALID_TYPES.includes(questionType)) {
       return NextResponse.json({ error: 'Invalid questionType' }, { status: 400 })
     }
 
@@ -43,33 +44,40 @@ export async function POST(request) {
       return NextResponse.json({ error: 'numberOfQuestions must be 1–30' }, { status: 400 })
     }
 
-    if (!['easy', 'medium', 'hard'].includes(difficulty)) {
-      return NextResponse.json({ error: 'Invalid difficulty' }, { status: 400 })
+    // Fix 2: difficulty can now be a string OR an array of strings
+    const VALID_DIFFICULTIES = ['easy', 'medium', 'hard']
+    const difficultyArr = Array.isArray(difficulty) ? difficulty : [difficulty]
+    const invalidDiffs  = difficultyArr.filter((d) => !VALID_DIFFICULTIES.includes(d))
+    if (invalidDiffs.length > 0) {
+      return NextResponse.json({ error: `Invalid difficulty: ${invalidDiffs.join(', ')}` }, { status: 400 })
     }
+    // Resolve to a single string for generationService (mix → 'mixed')
+    const difficultyStr = difficultyArr.length === 1 ? difficultyArr[0] : 'mixed'
+    // Also pass the full array so generationService can use it in the prompt
+    const difficultyMix = difficultyArr
 
     // ── Generate ───────────────────────────────────────────────────────────
-    // Fix 2: pass 'classLevel' and 'count' — the keys generationService destructures
+    // Fix 3: pass 'classLevel' and 'count' — the keys generationService destructures
     const result = await generateQuestions({
-      tutorId:           user.id,
+      tutorId:          user.id,
       questionType,
       subject,
-      topic:             topic.slice(0, 300),
-      classLevel:        gradeLevel,
+      topic:            topic.slice(0, 300),
+      classLevel:       gradeLevel,
       curriculum,
-      difficulty,
+      difficulty:       difficultyStr,
+      difficultyMix,
       count,
       additionalContext: additionalContext?.slice(0, 500),
       useCase,
       academicStyle,
     })
 
-    // result already has the right shape: { success, questions, error?, creditsUsed? }
     return NextResponse.json(result)
-
   } catch (err) {
     console.error('[/api/generate/questions]', err.message)
     return NextResponse.json(
-      { success: false, error: 'Something went wrong. Please try again.' },
+      { error: 'Something went wrong. Please try again.' },
       { status: 500 }
     )
   }

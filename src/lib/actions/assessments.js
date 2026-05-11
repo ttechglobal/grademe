@@ -1,20 +1,5 @@
 'use server'
 
-/**
- * src/lib/actions/assessments.js
- *
- * MIGRATIONS REQUIRED — run in Supabase SQL editor:
- *
- *   ALTER TABLE public.questions
- *     ADD COLUMN IF NOT EXISTS answer_template JSONB;
- *
- *   ALTER TABLE public.assessments
- *     ADD COLUMN IF NOT EXISTS curriculum      TEXT DEFAULT NULL,
- *     ADD COLUMN IF NOT EXISTS assessment_type TEXT DEFAULT 'quiz';
- *
- * Then: Supabase Dashboard → Settings → API → Reload schema
- */
-
 import { createClient } from '@/lib/supabase/server'
 import { redirect }     from 'next/navigation'
 
@@ -44,18 +29,16 @@ export async function createAssessment(setupData, questions, settings, source = 
 
   const slug = generateSlug(setupData.title || autoTitle)
 
-  // ── Resolve the canonical question type ───────────────────────────────
-  // setupData.questionType is set by AssessmentWizard (new field).
-  // setupData.questionMode is the legacy field — still 'mcq' for calculation.
-  // Always prefer questionType when present.
+  // ── Resolve the canonical question type ──────────────────────────────
   const resolvedQuestionType = (() => {
     const qt = setupData.questionType || setupData.questionMode || 'mcq'
-    if (qt === 'true_false') return 'true_false'
+    if (qt === 'true_false')  return 'true_false'
     if (qt === 'calculation') return 'calculation'
+    if (qt === 'stepwise')    return 'stepwise'
     return 'mcq'
   })()
 
-  // ── Core assessment insert ─────────────────────────────────────────────
+  // ── Core assessment insert ────────────────────────────────────────────
   const coreInsert = {
     teacher_id:        user.id,
     title:             setupData.title || autoTitle,
@@ -108,22 +91,22 @@ export async function createAssessment(setupData, questions, settings, source = 
     return { error: assessmentError.message }
   }
 
-  // ── Build question rows ────────────────────────────────────────────────
+  // ── Build question rows ───────────────────────────────────────────────
   const questionsToInsert = questions.map((q, index) => {
-    const qType  = q.question_type || q.type || 'mcq'
-    const isCalc = qType === 'calculation'
-    const isTF   = qType === 'true_false' || qType === 'truefalse'
+    const qType      = q.question_type || q.type || 'mcq'
+    const isCalc     = qType === 'calculation'
+    const isTF       = qType === 'true_false' || qType === 'truefalse'
+    const isStepwise = qType === 'stepwise'
 
-    // Calculation questions have no single-answer string.
-    // Store '' to satisfy the NOT NULL constraint on the `answer` column.
-    // The real answers live in answer_template.structure[].answer
-    const answerValue = isCalc ? '' : (q.answer ?? q.correct_answer ?? '')
+    // Calculation and Stepwise have no single answer string
+    const answerValue = (isCalc || isStepwise) ? '' : (q.answer ?? q.correct_answer ?? '')
 
     const row = {
       assessment_id: assessment.id,
       teacher_id:    user.id,
-      type:          isCalc ? 'calculation' : (isTF ? 'truefalse' : 'mcq'),
-      question_type: isCalc ? 'calculation' : (isTF ? 'true_false' : 'mcq'),
+      // 'type' must match the DB check constraint: mcq | truefalse | calculation | stepwise
+      type:          isCalc ? 'calculation' : isStepwise ? 'stepwise' : (isTF ? 'truefalse' : 'mcq'),
+      question_type: isCalc ? 'calculation' : isStepwise ? 'stepwise' : (isTF ? 'true_false' : 'mcq'),
       text:          q.text || q.question || q.question_text || '',
       options:       Array.isArray(q.options) ? q.options : [],
       answer:        answerValue,
@@ -135,10 +118,13 @@ export async function createAssessment(setupData, questions, settings, source = 
       topic:         setupData.title || autoTitle,
     }
 
-    // Only set answer_template for calculation questions — leave it out
-    // entirely for MCQ/TF so we don't require the column to exist yet.
     if (isCalc && q.answer_template) {
       row.answer_template = q.answer_template
+    }
+
+    if (isStepwise) {
+      if (q.steps     && q.steps.length > 0)     row.steps     = q.steps
+      if (q.word_bank && q.word_bank.length > 0) row.word_bank = q.word_bank
     }
 
     return row
@@ -158,13 +144,31 @@ export async function createAssessment(setupData, questions, settings, source = 
           'Then refresh the Supabase schema cache.',
       }
     }
+    if (questionsError.message?.includes('steps') || questionsError.message?.includes('word_bank')) {
+      return {
+        error:
+          'Database migration required for Stepwise. Please run:\n' +
+          'ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS steps JSONB;\n' +
+          'ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS word_bank JSONB;\n' +
+          'Then refresh the Supabase schema cache.',
+      }
+    }
+    if (questionsError.message?.includes('questions_type_check')) {
+      return {
+        error:
+          'Database constraint needs updating. Please run in Supabase SQL editor:\n' +
+          "ALTER TABLE public.questions DROP CONSTRAINT IF EXISTS questions_type_check;\n" +
+          "ALTER TABLE public.questions ADD CONSTRAINT questions_type_check CHECK (type IN ('mcq', 'truefalse', 'calculation', 'stepwise'));\n" +
+          'Then refresh the Supabase schema cache.',
+      }
+    }
     return { error: questionsError.message }
   }
 
-  // ── Save to question bank (MCQ and True/False only) ────────────────────
-  // Calculation questions are excluded — the bank only supports MCQ/TF.
+  // ── Save to question bank (MCQ and True/False only) ───────────────────
   if (
     resolvedQuestionType !== 'calculation' &&
+    resolvedQuestionType !== 'stepwise' &&
     (source === 'manual' || source === 'ai' || source === 'generate')
   ) {
     const bankQuestions = questions.map((q) => {

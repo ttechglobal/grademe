@@ -15,7 +15,8 @@ export default async function StudentTestPage({ params, searchParams }) {
       *,
       questions (
         id, type, question_type, text, options, answer,
-        hint, explanation, order_index, answer_template
+        hint, explanation, order_index, answer_template,
+        steps, word_bank
       )
     `)
     .eq('slug', slug)
@@ -33,10 +34,11 @@ export default async function StudentTestPage({ params, searchParams }) {
     (a, b) => a.order_index - b.order_index
   )
 
-  // Normalise question_type defensively
+  // Normalise question_type defensively — handles all type variants
   assessment.questions = assessment.questions.map((q) => {
-    if (q.type === 'calculation')                          return { ...q, question_type: 'calculation' }
-    if (q.type === 'truefalse' || q.type === 'true_false') return { ...q, question_type: 'true_false' }
+    if (q.type === 'calculation')                           return { ...q, question_type: 'calculation' }
+    if (q.type === 'truefalse' || q.type === 'true_false')  return { ...q, question_type: 'true_false' }
+    if (q.type === 'stepwise')                              return { ...q, question_type: 'stepwise' }
     return { ...q, question_type: q.question_type ?? 'mcq' }
   })
 

@@ -8,6 +8,7 @@ import {
 import MathRenderer        from '@/components/ui/MathRenderer'
 import ExplanationRenderer from '@/components/ui/ExplanationRenderer'
 import MathAnswerInput     from '@/components/student/MathAnswerInput'
+import StepwiseQuestion, { gradeStepwise } from '@/components/assessment/StepwiseQuestion'
 import { gradeAnswer }     from '@/lib/gradeAnswer'
 import { cn } from '@/lib/utils'
 
@@ -22,13 +23,14 @@ function isTFQ(q) {
     q?.question_type === 'true_false'
   )
 }
-
-// Question text — DB column is question_text; history entries use text
-function qText(q) {
-  return q?.question_text || q?.text || ''
+function isStepwiseQ(q) {
+  return q?.type === 'stepwise' || q?.question_type === 'stepwise'
 }
 
-// Grade a calculation question: every box must match accepted[]
+function qText(q) {
+  return q?.text || q?.question_text || q?.question || ''
+}
+
 function gradeCalc(boxValues, template) {
   if (!template?.structure?.length) return false
   const vals = (typeof boxValues === 'object' && boxValues !== null) ? boxValues : {}
@@ -39,14 +41,12 @@ function gradeCalc(boxValues, template) {
   })
 }
 
-// True if every box in the template has a non-empty value
 function calcFullyAnswered(boxValues, template) {
   if (!template?.structure?.length) return false
   const vals = (typeof boxValues === 'object' && boxValues !== null) ? boxValues : {}
   return template.structure.every((item) => (vals[item.id] ?? '').trim().length > 0)
 }
 
-// Build { [boxId]: 'correct' | 'wrong' } for MathAnswerInput results mode
 function calcBoxResults(boxValues, template) {
   if (!template?.structure?.length) return {}
   const vals = (typeof boxValues === 'object' && boxValues !== null) ? boxValues : {}
@@ -98,7 +98,6 @@ function SubmitConfirmModal({ answered, total, onConfirm, onCancel }) {
       <div className={cn(
         'relative bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl',
         'px-6 pt-6 pb-8 shadow-2xl',
-        'animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:fade-in sm:zoom-in-95 duration-200'
       )}>
         <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5 sm:hidden" />
         <div className="text-3xl mb-3">📋</div>
@@ -108,16 +107,12 @@ function SubmitConfirmModal({ answered, total, onConfirm, onCancel }) {
           Once submitted you cannot change your answers.
         </p>
         <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-3 rounded-2xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors"
-          >
+          <button onClick={onCancel}
+            className="flex-1 py-3 rounded-2xl border-2 border-border text-sm font-semibold text-ink hover:bg-surface transition-colors">
             Go Back
           </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 py-3 rounded-2xl bg-brand-900 text-white text-sm font-bold hover:bg-brand-700 transition-colors"
-          >
+          <button onClick={onConfirm}
+            className="flex-1 py-3 rounded-2xl bg-brand-900 text-white text-sm font-bold hover:bg-brand-700 transition-colors">
             Submit Now →
           </button>
         </div>
@@ -203,17 +198,13 @@ function CountdownTimer({ totalSeconds, onExpire, onWarn }) {
     )}>
       <Clock size={14} className={danger ? 'text-red-500' : warn ? 'text-amber' : 'text-brand-500'} />
       <div className="flex flex-col gap-0.5">
-        <span className={cn(
-          'text-sm font-bold tabular-nums',
-          danger ? 'text-red-600' : warn ? 'text-amber' : 'text-brand-700'
-        )}>
+        <span className={cn('text-sm font-bold tabular-nums',
+          danger ? 'text-red-600' : warn ? 'text-amber' : 'text-brand-700')}>
           {String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}
         </span>
         <div className="w-16 h-1 bg-white/60 rounded-full overflow-hidden">
-          <div
-            className={cn('h-full rounded-full transition-all duration-1000',
-              danger ? 'bg-red-500' : warn ? 'bg-amber' : 'bg-brand-500'
-            )}
+          <div className={cn('h-full rounded-full transition-all duration-1000',
+            danger ? 'bg-red-500' : warn ? 'bg-amber' : 'bg-brand-500')}
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -230,18 +221,11 @@ function HintButton({ hint }) {
     <div className="flex items-start gap-2 bg-amber/10 border border-amber/25 rounded-xl px-4 py-3">
       <span className="text-sm flex-shrink-0">💡</span>
       <p className="text-sm text-amber leading-relaxed flex-1">{hint}</p>
-      <button
-        onClick={() => setOpen(false)}
-        className="text-amber/50 hover:text-amber text-lg leading-none flex-shrink-0"
-      >
-        ×
-      </button>
+      <button onClick={() => setOpen(false)} className="text-amber/50 hover:text-amber text-lg leading-none flex-shrink-0">×</button>
     </div>
   ) : (
-    <button
-      onClick={() => setOpen(true)}
-      className="inline-flex items-center gap-2 text-xs font-bold text-amber bg-amber/10 border border-amber/25 px-3 py-2 rounded-xl hover:bg-amber/20 transition-colors self-start"
-    >
+    <button onClick={() => setOpen(true)}
+      className="inline-flex items-center gap-2 text-xs font-bold text-amber bg-amber/10 border border-amber/25 px-3 py-2 rounded-xl hover:bg-amber/20 transition-colors self-start">
       💡 Show Hint
     </button>
   )
@@ -251,35 +235,24 @@ function HintButton({ hint }) {
 function ReviewNav({ idx, total, onPrev, onNext, onDone }) {
   return (
     <div className="flex items-center justify-between gap-3 pb-6">
-      <button
-        onClick={onPrev}
-        disabled={idx === 0}
-        className="flex items-center gap-2 px-5 py-3 rounded-xl border-2 border-border text-sm font-semibold text-ink disabled:opacity-40 hover:bg-surface transition-colors"
-      >
+      <button onClick={onPrev} disabled={idx === 0}
+        className="flex items-center gap-2 px-5 py-3 rounded-xl border-2 border-border text-sm font-semibold text-ink disabled:opacity-40 hover:bg-surface transition-colors">
         <ChevronLeft size={15} /> Previous
       </button>
-
       <div className="flex items-center gap-1.5 overflow-x-auto max-w-[140px]">
         {Array.from({ length: total }).map((_, i) => (
-          <div key={i} className={cn(
-            'w-2 h-2 rounded-full flex-shrink-0 transition-all',
-            i === idx ? 'bg-brand-800 w-4' : 'bg-border'
-          )} />
+          <div key={i} className={cn('w-2 h-2 rounded-full flex-shrink-0 transition-all',
+            i === idx ? 'bg-brand-800 w-4' : 'bg-border')} />
         ))}
       </div>
-
       {idx < total - 1 ? (
-        <button
-          onClick={onNext}
-          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 transition-colors"
-        >
+        <button onClick={onNext}
+          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 transition-colors">
           Next <ChevronRight size={15} />
         </button>
       ) : (
-        <button
-          onClick={onDone}
-          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-amber text-brand-900 text-sm font-bold hover:bg-amber/90 transition-colors"
-        >
+        <button onClick={onDone}
+          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-amber text-brand-900 text-sm font-bold hover:bg-amber/90 transition-colors">
           Done ✓
         </button>
       )}
@@ -289,31 +262,33 @@ function ReviewNav({ idx, total, onPrev, onNext, onDone }) {
 
 // ─── Shared question review card ───────────────────────────────────────────────
 function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, subject }) {
-  const isCalc = isCalcQ(q)
-  const isTF   = isTFQ(q)
-  const boxRes = isCalc ? calcBoxResults(sa, q.answer_template) : {}
+  const isCalc     = isCalcQ(q)
+  const isTF       = isTFQ(q)
+  const isStepwise = isStepwiseQ(q)
+  const boxRes     = isCalc ? calcBoxResults(sa, q.answer_template) : {}
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Status badge */}
       <div className={cn(
         'inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold self-start',
-        ok ? 'bg-green-50 text-green-600 border border-green-200'
-           : 'bg-red-50 text-red-500 border border-red-200'
+        ok ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-red-50 text-red-500 border border-red-200'
       )}>
         {ok ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
         {ok ? 'Correct' : 'Incorrect'} — Q{idx + 1} of {total}
       </div>
 
-      {/* Question text */}
       <div className="bg-white border border-border rounded-2xl px-5 py-5">
         <p className="text-lg font-semibold text-ink leading-relaxed">
           <MathRenderer text={qText(q)} />
         </p>
       </div>
 
-      {/* Answer area */}
-      {isCalc ? (
+      {isStepwise ? (
+        <div className="bg-white border border-border rounded-2xl px-5 py-5">
+          <p className="text-sm font-semibold text-ink-3 mb-4">Your completed steps</p>
+          <StepwiseQuestion question={q} readOnly />
+        </div>
+      ) : isCalc ? (
         <div className="bg-white border border-border rounded-2xl px-5 py-5">
           <p className="text-sm font-semibold text-ink-3 mb-4">Your answer</p>
           <MathAnswerInput
@@ -334,8 +309,7 @@ function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, s
                 'flex flex-col items-center gap-2 py-5 rounded-2xl border-2 text-base font-semibold',
                 isAns && isStu  ? 'border-success bg-success-light text-success' :
                 isAns && !isStu ? 'border-success/50 bg-success-light/50 text-success' :
-                !isAns && isStu ? 'border-danger bg-danger-light text-danger' :
-                                  'border-border text-ink-4'
+                !isAns && isStu ? 'border-danger bg-danger-light text-danger' : 'border-border text-ink-4'
               )}>
                 <span className="text-2xl">{val === 'True' ? '✅' : '❌'}</span>
                 <span>{val}</span>
@@ -351,27 +325,20 @@ function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, s
             const letter    = String.fromCharCode(65 + oi)
             const optLetter = opt.charAt(0)
             const isAnswer  = optLetter === q.answer || letter === q.answer
-            const isStudent = optLetter === sa        || letter === sa
-            const badge     = isAnswer && isStudent ? '✓ Correct' : isAnswer ? '✓ Correct answer' : isStudent ? '✗ Your answer' : null
+            const isStudent = optLetter === sa || letter === sa
+            const badge = isAnswer && isStudent ? '✓ Correct' : isAnswer ? '✓ Correct answer' : isStudent ? '✗ Your answer' : null
             return (
               <div key={oi} className={cn(
                 'flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm',
                 isAnswer && isStudent  ? 'border-success bg-success-light text-success font-semibold' :
                 isAnswer && !isStudent ? 'border-success/40 bg-success-light/50 text-success' :
-                isStudent && !isAnswer ? 'border-danger bg-danger-light text-danger font-semibold' :
-                                         'border-border text-ink-4'
+                isStudent && !isAnswer ? 'border-danger bg-danger-light text-danger font-semibold' : 'border-border text-ink-4'
               )}>
-                <span className={cn(
-                  'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
-                  isAnswer && isStudent ? 'bg-green-500 text-white' :
-                  isAnswer              ? 'bg-green-400 text-white' :
-                  isStudent             ? 'bg-red-500   text-white' : 'bg-surface text-ink-4'
-                )}>
+                <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
+                  isAnswer && isStudent ? 'bg-green-500 text-white' : isAnswer ? 'bg-green-400 text-white' : isStudent ? 'bg-red-500 text-white' : 'bg-surface text-ink-4')}>
                   {letter}
                 </span>
-                <span className="flex-1 leading-relaxed">
-                  <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                </span>
+                <span className="flex-1 leading-relaxed"><MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} /></span>
                 {badge && <span className="text-xs font-bold ml-auto flex-shrink-0">{badge}</span>}
               </div>
             )
@@ -379,72 +346,52 @@ function QuestionReviewCard({ q, idx, total, studentAnswer: sa, isCorrect: ok, s
         </div>
       )}
 
-      {/* Hint */}
       <HintButton key={`hint-${idx}`} hint={q.hint} />
 
-      {/* Explanation */}
-      {q.explanation?.trim() && (
-        <ExplanationRenderer
-          explanation={q.explanation}
-          hint={null}
-          subject={subject}
-          showClosing
-        />
+      {!isStepwise && q.explanation?.trim() && (
+        <ExplanationRenderer explanation={q.explanation} hint={null} subject={subject} showClosing />
       )}
     </div>
   )
 }
 
-// ─── Past review screen (from localStorage history) ───────────────────────────
+// ─── Past review screen ────────────────────────────────────────────────────────
 function PastReviewScreen({ entry, onBack }) {
   const { questions = [], answers = {}, title, subject } = entry
   const [idx, setIdx] = useState(0)
-  const q     = questions[idx]
-  const total = questions.length
+  const q = questions[idx]
   if (!q) return null
 
   const sa = answers[idx] ?? ''
   const ok = isCalcQ(q)
     ? gradeCalc(sa, q.answer_template)
+    : isStepwiseQ(q)
+    ? gradeStepwise(q.steps, sa).allCorrect
     : gradeAnswer(sa ?? '', q.answer, q.type ?? q.question_type)
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] flex flex-col">
       <div className="bg-brand-900 px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
-        <button onClick={onBack} className="text-white/60 hover:text-white">
-          <ChevronLeft size={20} />
-        </button>
+        <button onClick={onBack} className="text-white/60 hover:text-white"><ChevronLeft size={20} /></button>
         <div className="flex-1 min-w-0">
           <p className="text-white font-semibold text-sm truncate">{title}</p>
-          <p className="text-white/40 text-xs">Reviewing Q{idx + 1} of {total}</p>
+          <p className="text-white/40 text-xs">Q{idx + 1} of {questions.length}</p>
         </div>
-        <div className="w-20 flex-shrink-0">
+        <div className="w-20">
           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber rounded-full transition-all"
-              style={{ width: `${((idx + 1) / total) * 100}%` }}
-            />
+            <div className="h-full bg-amber rounded-full transition-all" style={{ width: `${((idx+1)/questions.length)*100}%` }} />
           </div>
         </div>
       </div>
-
       <div className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full flex flex-col gap-5">
-        <QuestionReviewCard
-          q={q} idx={idx} total={total}
-          studentAnswer={sa} isCorrect={ok} subject={subject}
-        />
-        <ReviewNav
-          idx={idx} total={total}
-          onPrev={() => setIdx((i) => i - 1)}
-          onNext={() => setIdx((i) => i + 1)}
-          onDone={onBack}
-        />
+        <QuestionReviewCard q={q} idx={idx} total={questions.length} studentAnswer={sa} isCorrect={ok} subject={subject} />
+        <ReviewNav idx={idx} total={questions.length} onPrev={() => setIdx(i=>i-1)} onNext={() => setIdx(i=>i+1)} onDone={onBack} />
       </div>
     </div>
   )
 }
 
-// ─── Review screen (post-result, all questions) ────────────────────────────────
+// ─── Review screen ─────────────────────────────────────────────────────────────
 function ReviewAllScreen({ assessment, answers, onDone }) {
   const questions = assessment.questions ?? []
   const [idx, setIdx] = useState(0)
@@ -455,63 +402,46 @@ function ReviewAllScreen({ assessment, answers, onDone }) {
   const sa = answers[idx]
   const ok = isCalcQ(q)
     ? gradeCalc(sa, q.answer_template)
+    : isStepwiseQ(q)
+    ? gradeStepwise(q.steps, sa).allCorrect
     : gradeAnswer(sa ?? '', q.answer, q.type ?? q.question_type)
 
   return (
-    <div
-      className="min-h-screen bg-[#f7f7f5] flex flex-col"
-      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
-    >
+    <div className="min-h-screen bg-[#f7f7f5] flex flex-col"
+      style={{ userSelect:'none', WebkitUserSelect:'none' }}>
       <div className="bg-brand-900 px-4 py-4 sticky top-0 z-10 flex items-center gap-3">
-        <button onClick={onDone} className="text-white/60 hover:text-white">
-          <ChevronLeft size={20} />
-        </button>
+        <button onClick={onDone} className="text-white/60 hover:text-white"><ChevronLeft size={20} /></button>
         <div className="flex-1 min-w-0">
           <p className="text-white font-semibold text-sm truncate">Review — {assessment.title}</p>
-          <p className="text-white/40 text-xs">Question {idx + 1} of {questions.length}</p>
+          <p className="text-white/40 text-xs">Q{idx+1} of {questions.length}</p>
         </div>
-        <div className="w-24 flex-shrink-0">
+        <div className="w-24">
           <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber rounded-full transition-all"
-              style={{ width: `${((idx + 1) / questions.length) * 100}%` }}
-            />
+            <div className="h-full bg-amber rounded-full transition-all" style={{ width: `${((idx+1)/questions.length)*100}%` }} />
           </div>
         </div>
       </div>
 
-      {/* Question dots */}
       <div className="flex gap-1.5 px-4 py-3 overflow-x-auto bg-white border-b border-border">
         {questions.map((ques, i) => {
           const a = answers[i]
-          const c = isCalcQ(ques)
-            ? gradeCalc(a, ques.answer_template)
+          const c = isCalcQ(ques) ? gradeCalc(a, ques.answer_template)
+            : isStepwiseQ(ques) ? gradeStepwise(ques.steps, a).allCorrect
             : gradeAnswer(a ?? '', ques.answer, ques.type ?? ques.question_type)
           return (
             <button key={i} onClick={() => setIdx(i)}
-              className={cn(
-                'w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 transition-all border-2',
+              className={cn('w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 transition-all border-2',
                 i === idx ? 'bg-brand-800 text-white border-brand-800 scale-110' :
-                c         ? 'bg-green-50 text-green-600 border-green-300' :
-                            'bg-red-50 text-red-500 border-red-200'
-              )}>
-              {i + 1}
+                c ? 'bg-green-50 text-green-600 border-green-300' : 'bg-red-50 text-red-500 border-red-200')}>
+              {i+1}
             </button>
           )
         })}
       </div>
 
       <div key={idx} className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full flex flex-col gap-5">
-        <QuestionReviewCard
-          q={q} idx={idx} total={questions.length}
-          studentAnswer={sa} isCorrect={ok} subject={assessment.subject}
-        />
-        <ReviewNav
-          idx={idx} total={questions.length}
-          onPrev={() => setIdx((i) => i - 1)}
-          onNext={() => setIdx((i) => i + 1)}
-          onDone={onDone}
-        />
+        <QuestionReviewCard q={q} idx={idx} total={questions.length} studentAnswer={sa} isCorrect={ok} subject={assessment.subject} />
+        <ReviewNav idx={idx} total={questions.length} onPrev={() => setIdx(i=>i-1)} onNext={() => setIdx(i=>i+1)} onDone={onDone} />
       </div>
     </div>
   )
@@ -521,14 +451,12 @@ function ReviewAllScreen({ assessment, answers, onDone }) {
 function ResultScreen({ score, correct, total, onReview }) {
   const pct       = score ?? 0
   const isPerfect = pct === 100
-
   const grade =
-    pct >= 90 ? { emoji: '🏆', label: 'Outstanding!',    sub: 'You nailed it. Perfect performance!' }      :
-    pct >= 75 ? { emoji: '🎉', label: 'Great job!',       sub: 'Really solid performance. Well done!' }     :
-    pct >= 60 ? { emoji: '👍', label: 'Good effort!',     sub: 'You are on the right track. Keep going!' }  :
-    pct >= 40 ? { emoji: '📚', label: 'Keep practising!', sub: 'Review the explanations to improve.' }      :
-                { emoji: '🌱', label: "Don't give up!",   sub: 'Everyone improves with practice.' }
-
+    pct >= 90 ? { emoji: '🏆', label: 'Outstanding!',    sub: 'You nailed it.' }           :
+    pct >= 75 ? { emoji: '🎉', label: 'Great job!',       sub: 'Solid performance!' }        :
+    pct >= 60 ? { emoji: '👍', label: 'Good effort!',     sub: 'Keep going!' }               :
+    pct >= 40 ? { emoji: '📚', label: 'Keep practising!', sub: 'Review the explanations.' }  :
+                { emoji: '🌱', label: "Don't give up!",   sub: 'Everyone improves.' }
   return (
     <div className="min-h-screen bg-[#f7f7f5] flex flex-col items-center justify-center px-4 py-10">
       {isPerfect && <Confetti />}
@@ -540,24 +468,15 @@ function ResultScreen({ score, correct, total, onReview }) {
           <p className="text-base font-semibold text-brand-700 mb-4">{grade.label}</p>
           <p className="text-sm text-ink-3 mb-5">{grade.sub}</p>
           <div className="h-3 bg-surface rounded-full overflow-hidden">
-            <div
-              className={cn('h-full rounded-full transition-all duration-1000',
-                pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-amber' : 'bg-red-500'
-              )}
-              style={{ width: `${pct}%` }}
-            />
+            <div className={cn('h-full rounded-full transition-all duration-1000',
+              pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-amber' : 'bg-red-500')}
+              style={{ width: `${pct}%` }} />
           </div>
         </div>
-
-        <button
-          onClick={onReview}
-          className="w-full py-3.5 rounded-2xl bg-brand-800 text-white font-bold hover:bg-brand-700 transition-colors"
-        >
+        <button onClick={onReview}
+          className="w-full py-3.5 rounded-2xl bg-brand-800 text-white font-bold hover:bg-brand-700 transition-colors">
           Review Answers →
         </button>
-        <p className="text-center text-xs text-ink-4">
-          Tap any question dot to jump to it during review
-        </p>
       </div>
     </div>
   )
@@ -582,11 +501,8 @@ function StartScreen({ assessment, onStart }) {
   )
 
   const fullNameValue = fieldValues['full_name'] ?? ''
-
-  const canStart =
-    fullNameValue.trim().length >= 2 &&
-    participantFields
-      .filter((f) => f.required && f.key !== 'full_name')
+  const canStart = fullNameValue.trim().length >= 2 &&
+    participantFields.filter((f) => f.required && f.key !== 'full_name')
       .every((f) => (fieldValues[f.key] ?? '').trim().length > 0)
 
   const handleGo = () => {
@@ -597,27 +513,20 @@ function StartScreen({ assessment, onStart }) {
     setTimeout(() => onStart(trimmed, fieldValues), 2000)
   }
 
-  if (reviewEntry) {
-    return <PastReviewScreen entry={reviewEntry} onBack={() => setReviewEntry(null)} />
-  }
+  if (reviewEntry) return <PastReviewScreen entry={reviewEntry} onBack={() => setReviewEntry(null)} />
 
   if (phase === 'transition') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700 flex flex-col items-center justify-center p-5">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-amber/20 flex items-center justify-center">
-            <span className="text-3xl">✊</span>
-          </div>
+          <div className="w-16 h-16 rounded-2xl bg-amber/20 flex items-center justify-center"><span className="text-3xl">✊</span></div>
           <div>
             <p className="text-2xl font-bold text-white mb-1">Hi {committed}!</p>
             <p className="text-white/70 text-base">You've got this. Let's begin!</p>
           </div>
           <div className="flex gap-1.5">
-            {[0, 1, 2].map((i) => (
-              <div key={i}
-                className="w-2 h-2 rounded-full bg-white/30 animate-pulse"
-                style={{ animationDelay: `${i * 0.2}s` }}
-              />
+            {[0,1,2].map((i) => (
+              <div key={i} className="w-2 h-2 rounded-full bg-white/30 animate-pulse" style={{ animationDelay: `${i*0.2}s` }} />
             ))}
           </div>
         </div>
@@ -631,10 +540,8 @@ function StartScreen({ assessment, onStart }) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-brand-900 to-brand-700 flex flex-col items-center justify-start p-4 pt-10">
         <div className="w-full max-w-sm">
-          <button
-            onClick={() => setShowHistory(false)}
-            className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white mb-5 transition-colors"
-          >
+          <button onClick={() => setShowHistory(false)}
+            className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white mb-5">
             <ChevronLeft size={15} /> Back
           </button>
           <h2 className="font-display text-xl font-bold text-white mb-4">Your Past Attempts</h2>
@@ -646,9 +553,7 @@ function StartScreen({ assessment, onStart }) {
                 <button key={i} onClick={() => setReviewEntry(entry)}
                   className="bg-white/10 border border-white/20 rounded-2xl px-4 py-4 text-left hover:bg-white/20 transition-colors">
                   <p className="font-semibold text-white text-sm">{entry.studentName}</p>
-                  <p className="text-xs text-white/50 mt-0.5">
-                    {new Date(entry.completedAt).toLocaleDateString()}
-                  </p>
+                  <p className="text-xs text-white/50 mt-0.5">{new Date(entry.completedAt).toLocaleDateString()}</p>
                   <p className="text-2xl font-black text-amber mt-1">{entry.score}%</p>
                 </button>
               ))}
@@ -667,54 +572,37 @@ function StartScreen({ assessment, onStart }) {
             <p className="text-xs font-bold text-brand-500 uppercase tracking-widest mb-1">
               {assessment.subject?.replace(/_/g, ' ')}
             </p>
-            <h1 className="font-display text-2xl font-bold text-ink leading-snug">
-              {assessment.title}
-            </h1>
+            <h1 className="font-display text-2xl font-bold text-ink leading-snug">{assessment.title}</h1>
             <p className="text-sm text-ink-3 mt-1">
               {assessment.questions?.length} question{assessment.questions?.length !== 1 ? 's' : ''}
               {assessment.time_limit_mins ? ` · ${assessment.time_limit_mins} min` : ''}
             </p>
           </div>
-
           <div className="flex flex-col gap-3">
             {participantFields.map((field) => (
               <div key={field.key}>
                 <label className="block text-xs font-semibold text-ink-3 mb-1.5">
-                  {field.label}
-                  {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                  {field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}
                 </label>
-                <input
-                  type="text"
-                  value={fieldValues[field.key] ?? ''}
+                <input type="text" value={fieldValues[field.key] ?? ''}
                   onChange={(e) => setFieldValues((p) => ({ ...p, [field.key]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === 'Enter' && canStart) handleGo() }}
                   placeholder={`Enter your ${field.label.toLowerCase()}`}
-                  className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                  className="w-full px-4 py-3 border-2 border-border rounded-xl text-sm text-ink placeholder:text-ink-4 outline-none focus:border-brand-500"
                   style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
                 />
               </div>
             ))}
           </div>
-
-          <button
-            onClick={handleGo}
-            disabled={!canStart}
-            className={cn(
-              'w-full py-4 rounded-2xl text-base font-bold transition-all',
-              canStart
-                ? 'bg-brand-800 text-white hover:bg-brand-700 active:scale-[0.98]'
-                : 'bg-border text-ink-4 cursor-not-allowed'
-            )}
-          >
+          <button onClick={handleGo} disabled={!canStart}
+            className={cn('w-full py-4 rounded-2xl text-base font-bold transition-all',
+              canStart ? 'bg-brand-800 text-white hover:bg-brand-700 active:scale-[0.98]' : 'bg-border text-ink-4 cursor-not-allowed')}>
             Start Assessment →
           </button>
         </div>
-
         {historyCount > 0 && (
-          <button
-            onClick={() => setShowHistory(true)}
-            className="flex items-center justify-center gap-2 text-white/70 hover:text-white text-sm font-medium transition-colors py-2"
-          >
+          <button onClick={() => setShowHistory(true)}
+            className="flex items-center justify-center gap-2 text-white/70 hover:text-white text-sm font-medium py-2">
             <History size={14} /> View past attempts
           </button>
         )}
@@ -723,34 +611,39 @@ function StartScreen({ assessment, onStart }) {
   )
 }
 
-// ─── Question screen (test phase) ─────────────────────────────────────────────
+// ─── Question screen ───────────────────────────────────────────────────────────
 function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit, timedOut }) {
   const questions = assessment.questions ?? []
-
   const [current,     setCurrent]     = useState(0)
   const [showWarn,    setShowWarn]    = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [submitting,  setSubmitting]  = useState(false)
   const startTime = useRef(Date.now())
 
-  const q      = questions[current]
-  const isCalc = isCalcQ(q)
-  const isTF   = isTFQ(q)
+  const q          = questions[current]
+  const isCalc     = isCalcQ(q)
+  const isTF       = isTFQ(q)
+  const isStepwise = isStepwiseQ(q)
 
+  // answered count
   const answered = questions.filter((ques, i) => {
-    if (isCalcQ(ques)) return calcFullyAnswered(answers[i], ques.answer_template)
+    if (isCalcQ(ques))     return calcFullyAnswered(answers[i], ques.answer_template)
+    if (isStepwiseQ(ques)) return answers[i] !== undefined && answers[i] !== null
     return answers[i] !== undefined && answers[i] !== ''
   }).length
 
+  // Next enabled when current question is answered
   const hasAnswer = isCalc
     ? calcFullyAnswered(answers[current], q?.answer_template)
+    : isStepwise
+    ? answers[current] !== undefined && answers[current] !== null
     : answers[current] !== undefined
 
   useCopyProtection(true)
 
   useEffect(() => {
     if (timedOut && !submitting) doSubmit()
-  }, [timedOut]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [timedOut]) // eslint-disable-line
 
   const doSubmit = useCallback(() => {
     if (submitting) return
@@ -761,11 +654,8 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
 
   const handleSubmitClick = useCallback(() => {
     if (submitting) return
-    if (answered < questions.length) {
-      setShowConfirm(true)
-    } else {
-      doSubmit()
-    }
+    if (answered < questions.length) setShowConfirm(true)
+    else doSubmit()
   }, [answered, questions.length, submitting, doSubmit])
 
   const handleCalcChange = useCallback((boxId, val) => {
@@ -781,14 +671,11 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
   if (!q) return null
 
   return (
-    <div
-      className="min-h-screen bg-[#f7f7f5] flex flex-col"
-      style={{ userSelect: 'none', WebkitUserSelect: 'none', MozUserSelect: 'none', msUserSelect: 'none' }}
-    >
+    <div className="min-h-screen bg-[#f7f7f5] flex flex-col"
+      style={{ userSelect:'none', WebkitUserSelect:'none' }}>
       {showConfirm && (
         <SubmitConfirmModal
-          answered={answered}
-          total={questions.length}
+          answered={answered} total={questions.length}
           onConfirm={() => { setShowConfirm(false); doSubmit() }}
           onCancel={() => setShowConfirm(false)}
         />
@@ -798,31 +685,22 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
       <div className="bg-brand-900 px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-lg">
         <div>
           <p className="text-white font-semibold text-sm">{studentName}</p>
-          <p className="text-white/40 text-xs">
-            {assessment.title} · {answered}/{questions.length} answered
-          </p>
+          <p className="text-white/40 text-xs">{assessment.title} · {answered}/{questions.length} answered</p>
         </div>
         {assessment.time_limit_mins && (
           <div className="flex-1 max-w-[200px] mx-3">
-            <CountdownTimer
-              totalSeconds={assessment.time_limit_mins * 60}
-              onExpire={doSubmit}
-              onWarn={() => setShowWarn(true)}
-            />
+            <CountdownTimer totalSeconds={assessment.time_limit_mins * 60} onExpire={doSubmit} onWarn={() => setShowWarn(true)} />
           </div>
         )}
         <div className="text-right flex-shrink-0">
-          <p className="text-white/60 text-xs mb-1">Q{current + 1}/{questions.length}</p>
+          <p className="text-white/60 text-xs mb-1">Q{current+1}/{questions.length}</p>
           <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber rounded-full transition-all duration-300"
-              style={{ width: `${((current + 1) / questions.length) * 100}%` }}
-            />
+            <div className="h-full bg-amber rounded-full transition-all duration-300" style={{ width: `${((current+1)/questions.length)*100}%` }} />
           </div>
         </div>
       </div>
 
-      {/* 5-min warning toast */}
+      {/* 5-min warning */}
       {showWarn && (
         <div className="fixed top-4 left-4 right-4 z-50 flex justify-center pointer-events-none">
           <div className="bg-amber text-brand-900 rounded-2xl px-5 py-4 shadow-xl flex items-center gap-4 max-w-sm w-full pointer-events-auto">
@@ -841,18 +719,16 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
         {questions.map((ques, i) => {
           const isAnswered = isCalcQ(ques)
             ? calcFullyAnswered(answers[i], ques.answer_template)
+            : isStepwiseQ(ques)
+            ? answers[i] !== undefined && answers[i] !== null
             : answers[i] !== undefined && answers[i] !== ''
           return (
             <button key={i} onClick={() => setCurrent(i)}
-              className={cn(
-                'w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 transition-all border-2',
-                i === current
-                  ? 'bg-brand-800 text-white border-brand-800'
-                  : isAnswered
-                  ? 'bg-green-50 text-green-600 border-green-300'
-                  : 'bg-surface text-ink-4 border-border'
-              )}>
-              {i + 1}
+              className={cn('w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 transition-all border-2',
+                i === current ? 'bg-brand-800 text-white border-brand-800' :
+                isAnswered    ? 'bg-green-50 text-green-600 border-green-300' :
+                                'bg-surface text-ink-4 border-border')}>
+              {i+1}
             </button>
           )
         })}
@@ -862,75 +738,64 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
       <div key={current} className="flex-1 px-4 py-7 max-w-2xl mx-auto w-full">
         <div className="flex flex-col gap-5">
 
-          {/* Question card */}
-          <div className="bg-white border border-border rounded-2xl px-5 py-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
-              Question {current + 1} of {questions.length}
-            </p>
-            <p className="text-lg font-semibold text-ink leading-relaxed">
-              <MathRenderer text={qText(q)} />
-            </p>
-          </div>
+          {/* Question card — not shown for stepwise (it renders its own question text) */}
+          {!isStepwise && (
+            <div className="bg-white border border-border rounded-2xl px-5 py-5">
+              <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">
+                Question {current+1} of {questions.length}
+              </p>
+              <p className="text-lg font-semibold text-ink leading-relaxed">
+                <MathRenderer text={qText(q)} />
+              </p>
+            </div>
+          )}
 
-          {/* Hint */}
-          <HintButton key={`test-hint-${current}`} hint={q.hint} />
+          {!isStepwise && <HintButton key={`test-hint-${current}`} hint={q.hint} />}
 
-          {/* Answer input */}
           <div className="flex flex-col gap-3">
 
-            {/* Calculation */}
-            {isCalc && (
-              <div
-                className="bg-white border border-border rounded-2xl px-5 py-5"
-                style={{ userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text' }}
-              >
-                <p className="text-sm font-semibold text-ink-3 mb-5">Fill in your answer</p>
-                <MathAnswerInput
-                  template={q.answer_template}
-                  values={
-                    typeof answers[current] === 'object' && answers[current] !== null
-                      ? answers[current]
-                      : {}
-                  }
-                  onChange={handleCalcChange}
+            {/* ── Stepwise ── */}
+            {isStepwise && (
+              <div style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                <StepwiseQuestion
+                  question={q}
                   readOnly={false}
+                  onComplete={(filled, result) => {
+                    // Store the filled blanks in answers so handleSubmit can send them
+                    setAnswers((prev) => ({ ...prev, [current]: filled }))
+                  }}
                 />
-                {q.answer_template?.type === 'fraction' && (
-                  <p className="text-xs text-ink-4 mt-4">
-                    Enter the numerator (top number) and denominator (bottom number).
-                  </p>
-                )}
-                {q.answer_template?.type === 'simultaneous' && (
-                  <p className="text-xs text-ink-4 mt-4">
-                    Solve for each variable and enter the values in the boxes.
-                  </p>
-                )}
               </div>
             )}
 
-            {/* True / False */}
-            {isTF && !isCalc && (
-              <div className="grid grid-cols-2 gap-3">
+            {/* ── Calculation ── */}
+            {isCalc && !isStepwise && (
+              <div className="bg-white border border-border rounded-2xl px-5 py-5"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+                <p className="text-sm font-semibold text-ink-3 mb-5">Fill in your answer</p>
+                <MathAnswerInput
+                  template={q.answer_template}
+                  values={typeof answers[current] === 'object' && answers[current] !== null ? answers[current] : {}}
+                  onChange={handleCalcChange}
+                  readOnly={false}
+                />
+              </div>
+            )}
+
+            {/* ── True / False ── */}
+            {!isCalc && !isStepwise && isTF && (
+              <div className="grid grid-cols-2 gap-4">
                 {['True', 'False'].map((val) => {
                   const sel = answers[current] === val
                   return (
-                    <button
-                      key={val}
-                      onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
-                      className={cn(
-                        'flex flex-col items-center gap-2 py-6 rounded-2xl border-2 transition-all font-semibold',
-                        sel
-                          ? val === 'True'
-                            ? 'border-success bg-success-light'
-                            : 'border-danger bg-danger-light'
-                          : 'border-border bg-white hover:border-brand-300'
-                      )}
-                    >
-                      <span className="text-3xl">{val === 'True' ? '✅' : '❌'}</span>
-                      <span className={cn(
-                        'text-lg font-bold',
-                        sel ? (val === 'True' ? 'text-success' : 'text-danger') : 'text-ink'
-                      )}>
+                    <button key={val} onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
+                      className={cn('flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 transition-all',
+                        sel ? (val === 'True' ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50') : 'border-border bg-white hover:border-brand-300')}>
+                      {val === 'True'
+                        ? <CheckCircle2 size={32} className={sel ? 'text-green-500' : 'text-ink-4'} />
+                        : <XCircle      size={32} className={sel ? 'text-red-500'   : 'text-ink-4'} />}
+                      <span className={cn('text-lg font-bold',
+                        sel ? (val === 'True' ? 'text-green-600' : 'text-red-600') : 'text-ink')}>
                         {val}
                       </span>
                     </button>
@@ -939,66 +804,43 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
               </div>
             )}
 
-            {/* MCQ */}
-            {!isCalc && !isTF && (
-              <div className="flex flex-col gap-3">
-                {q.options?.map((opt, oi) => {
-                  const letter    = String.fromCharCode(65 + oi)
-                  const optLetter = opt.charAt(0)
-                  const sel       = answers[current] === letter || answers[current] === optLetter
-                  return (
-                    <button
-                      key={oi}
-                      onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
-                      className={cn(
-                        'flex items-center gap-3 w-full px-4 py-4 rounded-2xl border-2 text-left transition-all',
-                        sel
-                          ? 'border-brand-600 bg-surface shadow-sm'
-                          : 'border-border bg-white hover:border-brand-300'
-                      )}>
-                      <span className={cn(
-                        'w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors',
-                        sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4'
-                      )}>
-                        {letter}
-                      </span>
-                      <span className={cn(
-                        'text-sm font-medium leading-relaxed flex-1',
-                        sel ? 'text-brand-800' : 'text-ink'
-                      )}>
-                        <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
+            {/* ── MCQ ── */}
+            {!isCalc && !isTF && !isStepwise && (
+              q.options?.map((opt, oi) => {
+                const letter = String.fromCharCode(65 + oi)
+                const sel    = answers[current] === letter
+                return (
+                  <button key={oi} onClick={() => setAnswers((p) => ({ ...p, [current]: letter }))}
+                    className={cn('flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all',
+                      sel ? 'border-brand-600 bg-surface shadow-sm' : 'border-border bg-white hover:border-brand-300')}>
+                    <span className={cn('w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0',
+                      sel ? 'bg-brand-800 text-white' : 'bg-surface text-ink-4')}>
+                      {letter}
+                    </span>
+                    <span className={cn('text-sm font-medium leading-relaxed flex-1', sel ? 'text-brand-800' : 'text-ink')}>
+                      <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
+                    </span>
+                  </button>
+                )
+              })
             )}
 
           </div>
 
           {/* Nav buttons */}
           <div className="flex items-center justify-between pt-3">
-            <button
-              onClick={() => setCurrent((p) => Math.max(0, p - 1))}
-              disabled={current === 0}
-              className="px-5 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink disabled:opacity-40 hover:bg-surface transition-colors"
-            >
+            <button onClick={() => setCurrent((p) => Math.max(0,p-1))} disabled={current === 0}
+              className="px-5 py-2.5 rounded-xl border-2 border-border text-sm font-semibold text-ink disabled:opacity-40 hover:bg-surface transition-colors">
               ← Previous
             </button>
             {current < questions.length - 1 ? (
-              <button
-                onClick={() => setCurrent((p) => p + 1)}
-                disabled={!hasAnswer}
-                className="px-5 py-2.5 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
+              <button onClick={() => setCurrent((p) => p+1)} disabled={!hasAnswer && !isStepwise}
+                className="px-5 py-2.5 rounded-xl bg-brand-800 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                 Next →
               </button>
             ) : (
-              <button
-                onClick={handleSubmitClick}
-                disabled={submitting}
-                className="px-7 py-2.5 rounded-xl bg-amber text-ink text-sm font-bold hover:bg-amber/90 disabled:opacity-60 transition-colors"
-              >
+              <button onClick={handleSubmitClick} disabled={submitting}
+                className="px-7 py-2.5 rounded-xl bg-amber text-ink text-sm font-bold hover:bg-amber/90 disabled:opacity-60 transition-colors">
                 {submitting ? 'Submitting…' : `Submit (${answered}/${questions.length})`}
               </button>
             )}
@@ -1013,7 +855,6 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
 // ─── Root component ────────────────────────────────────────────────────────────
 export default function StudentAssessment({ assessment }) {
   const sessionKey = useRef(getSessionKey())
-
   const [phase,       setPhase]       = useState('start')
   const [studentName, setStudentName] = useState('')
   const [answers,     setAnswers]     = useState({})
@@ -1023,30 +864,28 @@ export default function StudentAssessment({ assessment }) {
   const handleSubmit = useCallback(async (answersMap, timeTakenSecs) => {
     const questions = assessment.questions ?? []
 
-    // Client-side score calculation
+    // Client-side score
     let correct = 0
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i]
       const a = answersMap[i]
       if (isCalcQ(q)) {
         if (gradeCalc(a, q.answer_template)) correct++
+      } else if (isStepwiseQ(q)) {
+        if (gradeStepwise(q.steps, a).allCorrect) correct++
       } else {
         if (gradeAnswer(a ?? '', q.answer, q.type ?? q.question_type)) correct++
       }
     }
     const score = Math.round((correct / questions.length) * 100)
 
-
-    // ✅ REPLACE WITH
-    // Convert index-keyed answers { 0: 'A', 1: {boxId: val} }
-    // to UUID-keyed { [question.id]: value } — route.js looks up by question.id
+    // Convert index-keyed answers to UUID-keyed for the server
     const answersById = {}
     for (let i = 0; i < questions.length; i++) {
       const val = answersMap[i]
       answersById[questions[i].id] = (val !== undefined && val !== null) ? val : ''
     }
 
-    // Fire-and-forget — server re-scores for integrity; this is just for speed
     fetch('/api/submit', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1061,14 +900,12 @@ export default function StudentAssessment({ assessment }) {
       }),
     }).catch(console.error)
 
-    // Persist to localStorage for past-attempt review (keep index-keyed locally)
     saveToHistory({
       slug:        assessment.slug,
       title:       assessment.title,
       subject:     assessment.subject,
       studentName,
-      score,
-      correct,
+      score, correct,
       total:       questions.length,
       completedAt: new Date().toISOString(),
       answers:     answersMap,
@@ -1082,6 +919,8 @@ export default function StudentAssessment({ assessment }) {
         type:            q.type,
         question_type:   q.question_type,
         answer_template: q.answer_template ?? null,
+        steps:           q.steps           ?? null,
+        word_bank:       q.word_bank        ?? null,
       })),
     })
 
@@ -1090,49 +929,9 @@ export default function StudentAssessment({ assessment }) {
     setPhase('result')
   }, [assessment, studentName])
 
-  if (phase === 'start') {
-    return (
-      <StartScreen
-        assessment={assessment}
-        onStart={(name) => { setStudentName(name); setPhase('test') }}
-      />
-    )
-  }
-
-  if (phase === 'test') {
-    return (
-      <QuestionScreen
-        assessment={assessment}
-        studentName={studentName}
-        answers={answers}
-        setAnswers={setAnswers}
-        onSubmit={handleSubmit}
-        timedOut={timedOut}
-      />
-    )
-  }
-
-  if (phase === 'result' && result) {
-    return (
-      <ResultScreen
-        score={result.score}
-        correct={result.correct}
-        total={result.total}
-        studentName={studentName}
-        onReview={() => setPhase('review')}
-      />
-    )
-  }
-
-  if (phase === 'review') {
-    return (
-      <ReviewAllScreen
-        assessment={assessment}
-        answers={answers}
-        onDone={() => setPhase('result')}
-      />
-    )
-  }
-
+  if (phase === 'start')  return <StartScreen assessment={assessment} onStart={(name) => { setStudentName(name); setPhase('test') }} />
+  if (phase === 'test')   return <QuestionScreen assessment={assessment} studentName={studentName} answers={answers} setAnswers={setAnswers} onSubmit={handleSubmit} timedOut={timedOut} />
+  if (phase === 'result' && result) return <ResultScreen score={result.score} correct={result.correct} total={result.total} studentName={studentName} onReview={() => setPhase('review')} />
+  if (phase === 'review') return <ReviewAllScreen assessment={assessment} answers={answers} onDone={() => setPhase('result')} />
   return null
 }

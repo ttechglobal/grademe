@@ -42,8 +42,8 @@ function getType(q) {
 }
 
 // ── Answer resolution ──────────────────────────────────────────────────────
-// Handles three formats submissions may use:
-//   1. UUID-keyed:  { [questionId]: value }  — current
+// Handles all storage formats submissions may use:
+//   1. UUID-keyed:  { [questionId]: value }  — current format
 //   2. Index-keyed: { "0": value }            — legacy
 //   3. Array:       [ value, value ]          — oldest legacy
 
@@ -93,7 +93,6 @@ function scoreOne(q, sa) {
 }
 
 // ── Expandable question card (questions list — teacher view) ───────────────
-// Shows question + options + answer + collapsible explanation & hint
 
 function QuestionDetailCard({ q }) {
   const [open, setOpen] = useState(false)
@@ -101,7 +100,6 @@ function QuestionDetailCard({ q }) {
 
   return (
     <div className="flex-1 min-w-0">
-      {/* Question text */}
       <p className="text-sm font-medium text-ink leading-relaxed">
         <MathRenderer text={q.text} />
       </p>
@@ -124,7 +122,7 @@ function QuestionDetailCard({ q }) {
         </div>
       )}
 
-      {/* Stepwise — blank count */}
+      {/* Stepwise blank count */}
       {typ === 'stepwise' && q.steps?.length > 0 && (
         <p className="text-xs text-ink-4 mt-1">
           {q.steps.filter((s) => s.is_blank).length} blank{q.steps.filter((s) => s.is_blank).length !== 1 ? 's' : ''} · {q.steps.length} steps
@@ -154,12 +152,10 @@ function QuestionDetailCard({ q }) {
         )}
       </div>
 
-      {/* Explanation — collapsed by default */}
+      {/* Collapsible explanation */}
       {open && q.explanation?.trim() && (
         <div className="mt-3 bg-brand-50 border border-brand-200/70 rounded-xl px-4 py-3">
-          <p className="text-xs font-bold text-brand-600 uppercase tracking-widest mb-2">
-            📖 Explanation
-          </p>
+          <p className="text-xs font-bold text-brand-600 uppercase tracking-widest mb-2">📖 Explanation</p>
           <p className="text-sm text-brand-800 leading-relaxed">
             <MathRenderer text={q.explanation} />
           </p>
@@ -169,8 +165,7 @@ function QuestionDetailCard({ q }) {
   )
 }
 
-// ── Per-question answer display (inside student submission rows) ───────────
-// No explanations here — just the student's answer vs correct answer
+// ── Per-question answer display (inside student rows) — no explanation ─────
 
 function QuestionAnswerCard({ q, index, sa, isCorrect }) {
   const typ  = getType(q)
@@ -181,8 +176,7 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
       'rounded-2xl border-2 overflow-hidden bg-white',
       isCorrect ? 'border-success/25' : 'border-danger/25'
     )}>
-
-      {/* Q header */}
+      {/* Header */}
       <div className={cn(
         'flex items-start gap-3 px-4 py-3',
         isCorrect ? 'bg-success-light/30' : 'bg-danger-light/30'
@@ -191,10 +185,7 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
           'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-white',
           isCorrect ? 'bg-success' : 'bg-danger'
         )}>
-          {isCorrect
-            ? <Check size={12} strokeWidth={3} />
-            : <X     size={12} strokeWidth={3} />
-          }
+          {isCorrect ? <Check size={12} strokeWidth={3} /> : <X size={12} strokeWidth={3} />}
         </div>
         <div className="flex-1 min-w-0">
           <span className="text-xs font-bold text-ink-4 mr-2">Q{index + 1}</span>
@@ -202,12 +193,9 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
             'text-xs font-semibold px-1.5 py-0.5 rounded mr-2',
             typ === 'stepwise'    ? 'bg-purple-100 text-purple-700' :
             typ === 'calculation' ? 'bg-brand-50 text-brand-600' :
-            typ === 'true_false'  ? 'bg-amber/10 text-amber' :
-                                    'bg-surface text-ink-4'
+            typ === 'true_false'  ? 'bg-amber/10 text-amber' : 'bg-surface text-ink-4'
           )}>
-            {typ === 'stepwise'    ? 'Stepwise'   :
-             typ === 'calculation' ? 'Fill-in'    :
-             typ === 'true_false'  ? 'True/False' : 'MCQ'}
+            {typ === 'stepwise' ? 'Stepwise' : typ === 'calculation' ? 'Fill-in' : typ === 'true_false' ? 'True/False' : 'MCQ'}
           </span>
           <span className="text-sm font-semibold text-ink leading-relaxed">
             <MathRenderer text={text} />
@@ -215,7 +203,7 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
         </div>
       </div>
 
-      {/* Answer body — student's answer only, no explanation */}
+      {/* Answer body — student answer only, no explanation */}
       <div className="px-4 py-3">
 
         {/* MCQ */}
@@ -225,33 +213,20 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
               const letter    = String.fromCharCode(65 + oi)
               const optLetter = opt.trim().charAt(0)
               const isAns     = optLetter === q.answer || letter === q.answer
-              const isStu     = sa
-                ? (optLetter === String(sa).trim() || letter === String(sa).trim())
-                : false
-
+              const isStu     = sa ? (optLetter === String(sa).trim() || letter === String(sa).trim()) : false
               let rowCls = 'border-border bg-white text-ink-4'
               let label  = null
               if (isAns && isStu)  { rowCls = 'border-success bg-success-light text-success font-semibold'; label = '✓ Correct' }
               else if (isAns)      { rowCls = 'border-success/60 bg-success-light/60 text-success'; label = '✓ Correct answer' }
               else if (isStu)      { rowCls = 'border-danger bg-danger-light text-danger font-semibold'; label = '✗ Student chose' }
-
               return (
-                <div key={oi} className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-sm transition-colors',
-                  rowCls
-                )}>
-                  <span className={cn(
-                    'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
-                    isAns ? 'bg-success text-white' : isStu ? 'bg-danger text-white' : 'bg-surface text-ink-4'
-                  )}>
+                <div key={oi} className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-sm', rowCls)}>
+                  <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
+                    isAns ? 'bg-success text-white' : isStu ? 'bg-danger text-white' : 'bg-surface text-ink-4')}>
                     {letter}
                   </span>
-                  <span className="flex-1 leading-relaxed">
-                    <MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} />
-                  </span>
-                  {label && (
-                    <span className="text-xs font-bold ml-auto flex-shrink-0 whitespace-nowrap">{label}</span>
-                  )}
+                  <span className="flex-1 leading-relaxed"><MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} /></span>
+                  {label && <span className="text-xs font-bold ml-auto flex-shrink-0 whitespace-nowrap">{label}</span>}
                 </div>
               )
             })}
@@ -269,8 +244,7 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
                   'flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-sm font-semibold',
                   isAns && isStu  ? 'border-success bg-success-light text-success' :
                   isAns && !isStu ? 'border-success/40 bg-success-light/50 text-success' :
-                  isStu && !isAns ? 'border-danger bg-danger-light text-danger' :
-                                    'border-border text-ink-4'
+                  isStu && !isAns ? 'border-danger bg-danger-light text-danger' : 'border-border text-ink-4'
                 )}>
                   <span className="text-lg">{val === 'True' ? '✅' : '❌'}</span>
                   <span>{val}</span>
@@ -295,16 +269,11 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
                   return (
                     <div key={item.id} className="flex flex-col items-center gap-1">
                       {item.label && <span className="text-xs text-ink-4">{item.label}</span>}
-                      <div className={cn(
-                        'px-4 py-2 rounded-xl border-2 text-sm font-bold min-w-[52px] text-center',
-                        ok ? 'border-success/40 bg-success-light text-success'
-                           : 'border-danger/40 bg-danger-light text-danger'
-                      )}>
+                      <div className={cn('px-4 py-2 rounded-xl border-2 text-sm font-bold min-w-[52px] text-center',
+                        ok ? 'border-success/40 bg-success-light text-success' : 'border-danger/40 bg-danger-light text-danger')}>
                         {val || '—'}
                       </div>
-                      {!ok && val && (
-                        <span className="text-xs text-ink-4">expected: <strong>{item.answer}</strong></span>
-                      )}
+                      {!ok && val && <span className="text-xs text-ink-4">expected: <strong>{item.answer}</strong></span>}
                     </div>
                   )
                 })}
@@ -329,26 +298,18 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
                   return (
                     <div key={step.id} className={cn(
                       'flex items-start gap-3 px-3 py-2.5 rounded-xl border-2 text-sm',
-                      correct ? 'border-success/40 bg-success-light/50 text-success'
-                              : 'border-danger/40 bg-danger-light/50 text-danger'
+                      correct ? 'border-success/40 bg-success-light/50 text-success' : 'border-danger/40 bg-danger-light/50 text-danger'
                     )}>
                       <span className="text-xs font-bold flex-shrink-0 mt-0.5 w-12">Step {si + 1}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-ink-4 mb-1">
-                          {step.text.replace('___', `[${filled || '—'}]`)}
-                        </p>
+                        <p className="text-xs text-ink-4 mb-1">{step.text.replace('___', `[${filled || '—'}]`)}</p>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={cn(
-                            'px-2 py-0.5 rounded-lg text-xs font-bold border',
-                            correct ? 'border-success/40 bg-success-light text-success'
-                                    : 'border-danger/40 bg-danger-light text-danger'
-                          )}>
+                          <span className={cn('px-2 py-0.5 rounded-lg text-xs font-bold border',
+                            correct ? 'border-success/40 bg-success-light text-success' : 'border-danger/40 bg-danger-light text-danger')}>
                             {filled || '—'}
                           </span>
                           {!correct && (
-                            <span className="text-xs text-ink-4">
-                              expected: <strong className="text-success">{step.answer}</strong>
-                            </span>
+                            <span className="text-xs text-ink-4">expected: <strong className="text-success">{step.answer}</strong></span>
                           )}
                         </div>
                       </div>
@@ -368,11 +329,8 @@ function QuestionAnswerCard({ q, index, sa, isCorrect }) {
           <div className="flex items-center gap-4">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs text-ink-4">Student answered</span>
-              <span className={cn(
-                'text-sm font-bold px-3 py-1.5 rounded-xl border-2',
-                isCorrect ? 'border-success/40 bg-success-light text-success'
-                          : 'border-danger/40 bg-danger-light text-danger'
-              )}>
+              <span className={cn('text-sm font-bold px-3 py-1.5 rounded-xl border-2',
+                isCorrect ? 'border-success/40 bg-success-light text-success' : 'border-danger/40 bg-danger-light text-danger')}>
                 {sa ? String(sa) : '—'}
               </span>
             </div>
@@ -399,77 +357,47 @@ function SubmissionRow({ submission, questions, defaultOpen = false }) {
 
   const answers = submission.answers ?? {}
   const correct = questions.filter((q, i) => scoreOne(q, resolveAnswer(answers, q, i))).length
-
-  const pct  = submission.score ?? Math.round((correct / Math.max(questions.length, 1)) * 100)
-  const date = new Date(submission.completed_at).toLocaleDateString('en-GB', {
+  const pct     = submission.score ?? Math.round((correct / Math.max(questions.length, 1)) * 100)
+  const date    = new Date(submission.completed_at).toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
 
   return (
-    <div className={cn(
-      'border-b border-border last:border-none transition-colors',
-      open ? 'bg-surface/30' : 'hover:bg-surface/20'
-    )}>
-
-      {/* Row header */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-4 px-5 py-4 text-left"
-      >
+    <div className={cn('border-b border-border last:border-none transition-colors', open ? 'bg-surface/30' : 'hover:bg-surface/20')}>
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-4 px-5 py-4 text-left">
         <Avatar name={submission.student_name} size="sm" />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-ink text-sm truncate">{submission.student_name}</p>
           <p className="text-xs text-ink-4 mt-0.5">{date}</p>
         </div>
-        <div className={cn('px-3 py-1.5 rounded-xl text-sm font-bold flex-shrink-0', scoreBg(pct))}>
-          {pct}%
-        </div>
-        <span className="text-xs text-ink-4 hidden sm:block flex-shrink-0">
-          {correct}/{questions.length} correct
-        </span>
+        <div className={cn('px-3 py-1.5 rounded-xl text-sm font-bold flex-shrink-0', scoreBg(pct))}>{pct}%</div>
+        <span className="text-xs text-ink-4 hidden sm:block flex-shrink-0">{correct}/{questions.length} correct</span>
         {submission.tab_violations > 0 && (
           <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-amber bg-amber-light px-2 py-1 rounded-full flex-shrink-0">
             <AlertTriangle size={10} />
             {submission.tab_violations} tab switch{submission.tab_violations !== 1 ? 'es' : ''}
           </span>
         )}
-        <ChevronDown
-          size={16}
-          className={cn('text-ink-4 flex-shrink-0 transition-transform duration-200', open && 'rotate-180')}
-        />
+        <ChevronDown size={16} className={cn('text-ink-4 flex-shrink-0 transition-transform duration-200', open && 'rotate-180')} />
       </button>
 
-      {/* Expanded answers */}
       {open && (
         <div className="px-5 pb-5 flex flex-col gap-3">
-          {/* Score bar */}
           <div className="flex items-center gap-3 py-2 px-4 bg-white rounded-xl border border-border">
             <div className="flex-1 h-2.5 bg-border rounded-full overflow-hidden">
-              <div
-                className={cn('h-full rounded-full transition-all duration-700',
-                  pct >= 75 ? 'bg-success' : pct >= 50 ? 'bg-amber' : 'bg-danger'
-                )}
+              <div className={cn('h-full rounded-full transition-all duration-700',
+                pct >= 75 ? 'bg-success' : pct >= 50 ? 'bg-amber' : 'bg-danger')}
                 style={{ width: `${pct}%` }}
               />
             </div>
             <span className={cn('text-sm font-bold flex-shrink-0', scoreColor(pct))}>{pct}%</span>
             <span className="text-xs text-ink-4 flex-shrink-0">{correct} of {questions.length} correct</span>
           </div>
-
-          {/* Per-question answer cards — no explanations */}
           {questions.map((q, i) => {
             const sa        = resolveAnswer(answers, q, i)
             const isCorrect = scoreOne(q, sa)
-            return (
-              <QuestionAnswerCard
-                key={q.id ?? i}
-                q={q}
-                index={i}
-                sa={sa}
-                isCorrect={isCorrect}
-              />
-            )
+            return <QuestionAnswerCard key={q.id ?? i} q={q} index={i} sa={sa} isCorrect={isCorrect} />
           })}
         </div>
       )}
@@ -551,13 +479,8 @@ export default function AssessmentDetailPage({ params }) {
     setDeleting(true)
     const supabase = createClient()
     const { error } = await supabase.from('assessments').delete().eq('id', id)
-    if (error) {
-      toast({ message: 'Failed to delete.', type: 'error' })
-      setDeleting(false)
-    } else {
-      toast({ message: 'Assessment deleted.', type: 'success' })
-      router.push('/dashboard/assessments')
-    }
+    if (error) { toast({ message: 'Failed to delete.', type: 'error' }); setDeleting(false) }
+    else { toast({ message: 'Assessment deleted.', type: 'success' }); router.push('/dashboard/assessments') }
   }
 
   const handleDeleteQuestion = async (qid) => {
@@ -605,7 +528,6 @@ export default function AssessmentDetailPage({ params }) {
     <>
       <div className="flex flex-col gap-6 max-w-4xl mx-auto">
 
-        {/* Back */}
         <Link href="/dashboard/assessments"
           className="inline-flex items-center gap-2 text-sm text-ink-3 hover:text-ink transition-colors self-start">
           <ArrowLeft size={15} /> Back to Assessments
@@ -621,20 +543,12 @@ export default function AssessmentDetailPage({ params }) {
               </p>
               {editTitle ? (
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={titleVal}
-                    onChange={(e) => setTitleVal(e.target.value)}
+                  <input type="text" value={titleVal} onChange={(e) => setTitleVal(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle() }}
                     className="flex-1 font-display text-2xl font-bold text-ink border-b-2 border-brand-500 outline-none bg-transparent"
-                    autoFocus
-                  />
-                  <button onClick={handleSaveTitle} disabled={savingTitle} className="text-success hover:text-success/80">
-                    <Check size={18} />
-                  </button>
-                  <button onClick={() => { setEditTitle(false); setTitleVal(assessment.title) }} className="text-ink-4 hover:text-danger">
-                    <X size={18} />
-                  </button>
+                    autoFocus />
+                  <button onClick={handleSaveTitle} disabled={savingTitle} className="text-success hover:text-success/80"><Check size={18} /></button>
+                  <button onClick={() => { setEditTitle(false); setTitleVal(assessment.title) }} className="text-ink-4 hover:text-danger"><X size={18} /></button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -648,42 +562,28 @@ export default function AssessmentDetailPage({ params }) {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                onClick={openPreview}
-                className="inline-flex items-center gap-2 bg-surface border border-border text-ink text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-border transition-colors"
-              >
+              <button onClick={openPreview}
+                className="inline-flex items-center gap-2 bg-surface border border-border text-ink text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-border transition-colors">
                 <Eye size={14} /> Preview
               </button>
-              <a
-                href={`/t/${assessment.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-brand-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-brand-700 transition-colors"
-              >
+              <a href={`/t/${assessment.slug}`} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-brand-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-brand-700 transition-colors">
                 Share Link
               </a>
-              <button
-                onClick={handleDeleteAssessment}
-                disabled={deleting}
-                className={cn(
-                  'inline-flex items-center gap-2 border text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50',
-                  confirmDelete === 'assessment'
-                    ? 'bg-danger text-white border-danger'
-                    : 'bg-white border-danger/30 text-danger hover:bg-danger-light'
-                )}
-              >
+              <button onClick={handleDeleteAssessment} disabled={deleting}
+                className={cn('inline-flex items-center gap-2 border text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50',
+                  confirmDelete === 'assessment' ? 'bg-danger text-white border-danger' : 'bg-white border-danger/30 text-danger hover:bg-danger-light')}>
                 <Trash2 size={14} />
                 {deleting ? 'Deleting…' : confirmDelete === 'assessment' ? 'Confirm delete?' : 'Delete'}
               </button>
             </div>
           </div>
 
-          {/* Stats */}
           <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-border">
             {[
               { icon: BookOpen,  label: 'Questions', value: assessment.questions.length },
               { icon: Users,     label: 'Responses', value: assessment.submissions.length },
-              { icon: BarChart2, label: 'Avg Score', value: avgScore !== null ? `${avgScore}%` : '—' },
+              { icon: BarChart2, label: 'Avg Score',  value: avgScore !== null ? `${avgScore}%` : '—' },
             ].map((s, i) => (
               <div key={i} className="text-center">
                 <div className="flex items-center justify-center gap-1.5 text-brand-500 mb-1">
@@ -691,8 +591,7 @@ export default function AssessmentDetailPage({ params }) {
                   <span className="text-xs font-semibold uppercase tracking-wide">{s.label}</span>
                 </div>
                 <p className={cn('font-display text-3xl font-bold',
-                  s.label === 'Avg Score' && avgScore !== null ? scoreColor(avgScore) : 'text-ink'
-                )}>
+                  s.label === 'Avg Score' && avgScore !== null ? scoreColor(avgScore) : 'text-ink')}>
                   {s.value}
                 </p>
               </div>
@@ -700,7 +599,6 @@ export default function AssessmentDetailPage({ params }) {
           </div>
         </div>
 
-        {/* Live indicator */}
         <div className="flex items-center gap-2 -mt-3">
           <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
           <p className="text-xs text-ink-4">Live — updates automatically when students submit</p>
@@ -711,10 +609,8 @@ export default function AssessmentDetailPage({ params }) {
           <p className="text-sm font-semibold text-ink">Share Link</p>
           <div className="flex items-center gap-2 bg-surface rounded-xl px-4 py-3 border border-border">
             <span className="flex-1 text-sm text-brand-600 font-medium truncate">{shareUrl}</span>
-            <button
-              onClick={copyLink}
-              className="flex items-center gap-1.5 bg-brand-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors flex-shrink-0"
-            >
+            <button onClick={copyLink}
+              className="flex items-center gap-1.5 bg-brand-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors flex-shrink-0">
               {copied ? <CheckCheck size={13} /> : <Copy size={13} />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
@@ -722,12 +618,10 @@ export default function AssessmentDetailPage({ params }) {
           <p className="text-xs text-ink-4">Edits to questions reflect on the live link immediately.</p>
         </div>
 
-        {/* Questions list — with expandable answer + explanation per question */}
+        {/* Questions list */}
         <div>
           <button onClick={() => setQOpen(!qOpen)} className="w-full flex items-center justify-between mb-3">
-            <h2 className="font-display text-lg font-bold text-ink">
-              Questions ({assessment.questions.length})
-            </h2>
+            <h2 className="font-display text-lg font-bold text-ink">Questions ({assessment.questions.length})</h2>
             {qOpen ? <ChevronUp size={16} className="text-ink-4" /> : <ChevronDown size={16} className="text-ink-4" />}
           </button>
 
@@ -737,37 +631,22 @@ export default function AssessmentDetailPage({ params }) {
                 <div className="p-8 text-center text-sm text-ink-4">No questions yet.</div>
               ) : (
                 assessment.questions.map((q, i) => (
-                  <div
-                    key={q.id}
-                    className="flex items-start gap-4 px-5 py-4 border-b border-border last:border-none hover:bg-surface/20 transition-colors"
-                  >
-                    {/* Number badge */}
+                  <div key={q.id}
+                    className="flex items-start gap-4 px-5 py-4 border-b border-border last:border-none hover:bg-surface/20 transition-colors">
                     <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                       {i + 1}
                     </div>
-
-                    {/* Question detail — text, options, answer pill, collapsible explanation */}
                     <QuestionDetailCard q={q} />
-
-                    {/* Edit / delete actions */}
                     <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
-                      <button
-                        onClick={() => setEditingQ(q)}
+                      <button onClick={() => setEditingQ(q)}
                         className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-brand-400 hover:text-brand-600 transition-colors"
-                        title="Edit"
-                      >
+                        title="Edit">
                         <Pencil size={13} />
                       </button>
-                      <button
-                        onClick={() => handleDeleteQuestion(q.id)}
-                        className={cn(
-                          'w-7 h-7 rounded-lg border flex items-center justify-center transition-colors',
-                          confirmDelete?.qid === q.id
-                            ? 'bg-danger border-danger text-white'
-                            : 'bg-surface border-border hover:border-danger hover:text-danger'
-                        )}
-                        title={confirmDelete?.qid === q.id ? 'Confirm?' : 'Delete'}
-                      >
+                      <button onClick={() => handleDeleteQuestion(q.id)}
+                        className={cn('w-7 h-7 rounded-lg border flex items-center justify-center transition-colors',
+                          confirmDelete?.qid === q.id ? 'bg-danger border-danger text-white' : 'bg-surface border-border hover:border-danger hover:text-danger')}
+                        title={confirmDelete?.qid === q.id ? 'Confirm?' : 'Delete'}>
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -781,21 +660,15 @@ export default function AssessmentDetailPage({ params }) {
         {/* Submissions */}
         <div>
           <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-            <h2 className="font-display text-lg font-bold text-ink">
-              Submissions ({assessment.submissions.length})
-            </h2>
+            <h2 className="font-display text-lg font-bold text-ink">Submissions ({assessment.submissions.length})</h2>
             {assessment.submissions.length > 0 && (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setAllExpanded(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-3 hover:text-ink border border-border bg-white px-3 py-2 rounded-xl transition-colors"
-                >
+                <button onClick={() => setAllExpanded(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-3 hover:text-ink border border-border bg-white px-3 py-2 rounded-xl transition-colors">
                   <ChevronsUpDown size={13} /> Expand All
                 </button>
-                <button
-                  onClick={() => setAllExpanded(false)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-3 hover:text-ink border border-border bg-white px-3 py-2 rounded-xl transition-colors"
-                >
+                <button onClick={() => setAllExpanded(false)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-3 hover:text-ink border border-border bg-white px-3 py-2 rounded-xl transition-colors">
                   <ChevronsDownUp size={13} /> Collapse All
                 </button>
               </div>
@@ -806,9 +679,7 @@ export default function AssessmentDetailPage({ params }) {
             <div className="bg-white border border-dashed border-border rounded-2xl p-8 text-center">
               <p className="text-3xl mb-2">📭</p>
               <p className="text-sm font-medium text-ink mb-1">No submissions yet</p>
-              <p className="text-sm text-ink-3">
-                Share the link — this page updates automatically when students submit
-              </p>
+              <p className="text-sm text-ink-3">Share the link — this page updates automatically when students submit</p>
             </div>
           ) : (
             <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
