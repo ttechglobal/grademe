@@ -110,7 +110,14 @@ export default function StepShare({ data, questions, source = 'manual', onBack, 
             <Eye size={22} className="text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-brand-900 text-base leading-tight">👁️ Preview Assessment</p>
+            <p className="font-bold text-brand-900 text-base leading-tight">
+              👁️ Preview Assessment
+              {questions.length > 0 && (
+                <span className="ml-2 text-sm font-semibold text-brand-600 bg-brand-100 px-2 py-0.5 rounded-full">
+                  {questions.length} question{questions.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </p>
             <p className="text-sm text-brand-700 mt-0.5 leading-relaxed">
               See exactly what your students will see — questions, options, and layout.
               Opens in a new tab. Nothing is saved yet.

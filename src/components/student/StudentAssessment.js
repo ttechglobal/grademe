@@ -786,18 +786,22 @@ function QuestionScreen({ assessment, studentName, answers, setAnswers, onSubmit
             {!isCalc && !isStepwise && isTF && (
               <div className="grid grid-cols-2 gap-4">
                 {['True', 'False'].map((val) => {
-                  const sel = answers[current] === val
+                  const sel   = answers[current] === val
+                  const other = answers[current] !== undefined && !sel
                   return (
-                    <button key={val} onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
-                      className={cn('flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 transition-all',
-                        sel ? (val === 'True' ? 'border-green-400 bg-green-50' : 'border-red-400 bg-red-50') : 'border-border bg-white hover:border-brand-300')}>
+                    <button key={val} type="button"
+                      onClick={() => setAnswers((p) => ({ ...p, [current]: val }))}
+                      className={cn(
+                        'flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 transition-all duration-150',
+                        sel && val === 'True'  ? 'border-green-500 bg-green-500 text-white shadow-lg scale-[1.02]' :
+                        sel && val === 'False' ? 'border-red-500 bg-red-500 text-white shadow-lg scale-[1.02]' :
+                        other                  ? 'border-border bg-white text-ink opacity-50 scale-[0.98]' :
+                                                 'border-border bg-white text-ink hover:border-brand-300 hover:bg-brand-50'
+                      )}>
                       {val === 'True'
-                        ? <CheckCircle2 size={32} className={sel ? 'text-green-500' : 'text-ink-4'} />
-                        : <XCircle      size={32} className={sel ? 'text-red-500'   : 'text-ink-4'} />}
-                      <span className={cn('text-lg font-bold',
-                        sel ? (val === 'True' ? 'text-green-600' : 'text-red-600') : 'text-ink')}>
-                        {val}
-                      </span>
+                        ? <CheckCircle2 size={32} className={sel ? 'text-white' : 'text-ink-4'} />
+                        : <XCircle      size={32} className={sel ? 'text-white' : 'text-ink-4'} />}
+                      <span className="text-lg font-bold">{val}</span>
                     </button>
                   )
                 })}

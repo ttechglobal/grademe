@@ -1,8 +1,8 @@
-'use client';
+'use client'
 
-import { CheckSquare, ToggleLeft, Calculator, Footprints } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { FLAGS } from '@/lib/featureFlags';
+import { useState } from 'react'
+import { CheckSquare, ToggleLeft, Calculator, Footprints, Check } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const QUESTION_TYPES = [
   {
@@ -19,24 +19,30 @@ const QUESTION_TYPES = [
   },
   {
     id:          'calculation',
-    label:       'Fill-in Answer',
-    description: 'Students fill in structured answer boxes. Perfect for maths and science.',
+    label:       'Fill in the Answer',
+    description: 'Students fill in structured answer boxes. Perfect for maths and physics calculations.',
     icon:        Calculator,
   },
-  // NEW: Stepwise — shown only when flag is enabled
-  ...(FLAGS.STEPWISE_QUESTIONS ? [{
+  {
     id:          'stepwise',
     label:       'Stepwise',
-    description: 'Students complete a worked solution by filling blanks in ordered steps. Best for problem-solving subjects.',
+    description: 'Students complete a worked solution by filling in missing steps. Ideal for problem-solving subjects.',
     icon:        Footprints,
-  }] : []),
+    isNew:       true,
+  },
 ]
 
-// The wizard calls this component as:
-//   <StepQuestionType onSelect={handleTypeSelect} />
-// handleTypeSelect(typeId) sets questionType state and advances to step 1.
-// This component holds NO selection state — the wizard owns it.
+// Wizard calls: <StepQuestionType onSelect={handleTypeSelect} />
+// Card click only selects — does NOT call onSelect or navigate.
+// Navigation happens only when the Next button is clicked.
 export default function StepQuestionType({ onSelect }) {
+  const [selected, setSelected] = useState(null)
+
+  const handleNext = () => {
+    if (!selected) return
+    onSelect(selected)
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -46,45 +52,79 @@ export default function StepQuestionType({ onSelect }) {
         </p>
       </div>
 
-      <div className={cn(
-        'grid grid-cols-1 gap-4',
-        QUESTION_TYPES.length === 4 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'
-      )}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {QUESTION_TYPES.map((type) => {
-          const Icon = type.icon;
+          const Icon       = type.icon
+          const isSelected = selected === type.id
+
           return (
             <button
               key={type.id}
               type="button"
-              onClick={() => onSelect(type.id)}
+              onClick={() => setSelected(type.id)}
               className={cn(
-                'flex flex-col items-start gap-3 rounded-xl border-2 p-5 text-left transition-all duration-150',
-                'border-border bg-white hover:border-brand-500 hover:shadow-sm',
+                'relative flex flex-col items-start gap-3 rounded-xl border-2 p-5 text-left transition-all duration-150',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
-                type.id === 'stepwise' && 'border-purple-200 hover:border-purple-500'
+                isSelected
+                  ? 'border-brand-600 bg-brand-50 shadow-sm'
+                  : 'border-border bg-white hover:border-brand-300 hover:shadow-sm'
               )}
             >
+              {/* "New" badge for Stepwise */}
+              {type.isNew && (
+                <span className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                  New
+                </span>
+              )}
+
+              {/* Selected checkmark */}
+              {isSelected && (
+                <span className="absolute top-3 right-3 w-5 h-5 rounded-full bg-brand-600 flex items-center justify-center">
+                  <Check size={11} className="text-white" strokeWidth={3} />
+                </span>
+              )}
+
               <span className={cn(
-                'flex h-10 w-10 items-center justify-center rounded-lg bg-surface',
-                type.id === 'stepwise' ? 'text-purple-600' : 'text-brand-500'
+                'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
+                isSelected ? 'bg-brand-100 text-brand-700' : 'bg-surface text-brand-500'
               )}>
                 <Icon className="h-5 w-5" />
               </span>
+
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-sm leading-tight text-ink">{type.label}</p>
-                  {type.id === 'stepwise' && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">NEW</span>
-                  )}
-                </div>
+                <p className={cn(
+                  'font-semibold text-sm leading-tight',
+                  isSelected ? 'text-brand-800' : 'text-ink'
+                )}>
+                  {type.label}
+                </p>
                 <p className="text-xs text-ink-3 leading-relaxed">{type.description}</p>
               </div>
             </button>
-          );
+          )
         })}
       </div>
 
-      <p className="text-xs text-ink-4 text-center pt-2">Select a question type to continue.</p>
+      <div className="flex items-center justify-between pt-2">
+        <p className="text-xs text-ink-4">
+          {selected
+            ? `${QUESTION_TYPES.find((t) => t.id === selected)?.label} selected`
+            : 'Select a question type to continue'}
+        </p>
+        <button
+          type="button"
+          onClick={handleNext}
+          disabled={!selected}
+          className={cn(
+            'px-6 py-2.5 rounded-xl text-sm font-bold transition-all',
+            selected
+              ? 'bg-brand-800 text-white hover:bg-brand-700 active:scale-[0.98]'
+              : 'bg-border text-ink-4 cursor-not-allowed'
+          )}
+        >
+          Next →
+        </button>
+      </div>
     </div>
-  );
+  )
 }

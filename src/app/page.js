@@ -199,9 +199,6 @@ export default function LandingPage() {
 
               {/* Left — copy */}
               <div style={{ opacity: heroIn ? 1 : 0, transform: heroIn ? 'translateY(0)' : 'translateY(24px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: `${B.amber}20`, border: `1px solid ${B.amber}40`, borderRadius: '99px', padding: '6px 14px', marginBottom: '24px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: B.amber }}>🚀 Now live for Nigerian teachers</span>
-                </div>
                 <h1 id="hero-heading" style={{ fontSize: 'clamp(32px, 5vw, 52px)', fontWeight: 800, color: '#fff', lineHeight: 1.15, marginBottom: '20px', letterSpacing: '-0.5px' }}>
                   Create assessments<br />
                   <span style={{ color: B.amber }}>students actually</span><br />
@@ -327,22 +324,29 @@ export default function LandingPage() {
             </div>
             <div style={{ display: 'grid', gap: '20px' }} className="sm:grid-cols-2">
               {[
-                { Icon: GraduationCap, color: B.darkDeep, bg: `${B.darkDeep}15`, title: 'K-12 Teachers & Private Tutors', desc: 'Create tests, assignments, and quizzes in minutes. Students get instant feedback and step-by-step explanations — your marking pile disappears.' },
-                { Icon: Monitor,       color: B.amber,    bg: B.amberLight,       title: 'Online Tutors', desc: 'Share your assessment link via WhatsApp, Telegram, or email. Students open it on any phone — no login, no download. Results come to you automatically.' },
-                { Icon: BookOpen,      color: B.darkDeep, bg: `${B.darkDeep}12`,  title: 'University & College Lecturers', desc: 'Academic-standard questions. Collect matric numbers. Give every student instant explanations — even in a class of 200.' },
-                { Icon: Users,         color: B.amber,    bg: B.amberLight,       title: 'Tutoring Centres & Institutes', desc: "Run assessments across multiple groups. Track every learner's progress automatically, without any manual data entry." },
+                { Icon: GraduationCap, color: B.darkDeep, bg: `${B.darkDeep}15`, title: 'K-12 Teachers & Private Tutors', desc: 'Create tests, assignments, and quizzes in minutes. Students get instant feedback and step-by-step explanations — your marking pile disappears.', img: null },
+                { Icon: Monitor,       color: B.amber,    bg: B.amberLight,       title: 'Online Tutors', desc: 'Share your assessment link via WhatsApp, Telegram, or email. Students open it on any phone — no login, no download. Results come to you automatically.', img: null },
+                { Icon: BookOpen,      color: B.darkDeep, bg: `${B.darkDeep}12`,  title: 'University & College Lecturers', desc: 'Academic-standard questions. Collect matric numbers. Give every student instant explanations — even in a class of 200.', img: null },
+                { Icon: Users,         color: B.amber,    bg: B.amberLight,       title: 'Tutoring Centres & Institutes', desc: "Run assessments across multiple groups. Track every learner's progress automatically, without any manual data entry.", img: null },
               ].map((c, i) => (
                 <div key={i} style={{
-                  background: '#fff', borderRadius: '20px', padding: '28px',
+                  background: '#fff', borderRadius: '20px', overflow: 'hidden',
                   border: `1px solid ${B.border}`, transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'default',
                 }}
                   onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 32px rgba(13,31,31,0.10)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
                   onMouseLeave={e => { e.currentTarget.style.boxShadow = ''; e.currentTarget.style.transform = '' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                    <c.Icon size={22} color={c.color} />
+                  {/* Image placeholder — set img: '/path/to/photo.jpg' to replace with a real image */}
+                  {c.img ? (
+                    <img src={c.img} alt={c.title} style={{ width: '100%', height: '160px', objectFit: 'cover', display: 'block' }} loading="lazy" />
+                  ) : (
+                    <div style={{ width: '100%', height: '160px', background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <c.Icon size={44} color={c.color} style={{ opacity: 0.65 }} />
+                    </div>
+                  )}
+                  <div style={{ padding: '24px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: B.ink, marginBottom: '8px' }}>{c.title}</h3>
+                    <p style={{ fontSize: '14px', color: B.inkMuted, lineHeight: 1.65 }}>{c.desc}</p>
                   </div>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: B.ink, marginBottom: '8px' }}>{c.title}</h3>
-                  <p style={{ fontSize: '14px', color: B.inkMuted, lineHeight: 1.65 }}>{c.desc}</p>
                 </div>
               ))}
             </div>
@@ -394,9 +398,6 @@ export default function LandingPage() {
           <div style={{ maxWidth: '1152px', margin: '0 auto', padding: '0 24px' }}>
             <div style={{ display: 'grid', alignItems: 'center', gap: '48px' }} className="md:grid-cols-2">
               <div>
-                <div style={{ display: 'inline-block', background: `${B.amber}20`, border: `1px solid ${B.amber}40`, borderRadius: '99px', padding: '5px 14px', marginBottom: '20px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: B.amber }}>The difference students feel</span>
-                </div>
                 <h2 id="explanation-heading" style={{ fontSize: 'clamp(22px, 4vw, 34px)', fontWeight: 800, color: B.ink, marginBottom: '16px', lineHeight: 1.25 }}>
                   Students learn from <em style={{ fontStyle: 'normal', color: B.amber }}>every</em> mistake — immediately
                 </h2>
@@ -529,9 +530,9 @@ export default function LandingPage() {
             </div>
             <div style={{ display: 'grid', gap: '20px' }} className="md:grid-cols-3">
               {[
-                { quote: "I created my first assessment in literally 3 minutes. The AI questions were perfect for my JSS3 class. My students actually read their explanations now.", name: "Mrs. Adaeze O.", role: "Mathematics Teacher, Lagos" },
-                { quote: "As an online tutor I used to spend hours marking. Now results come in automatically and students get explanations immediately. GradeMee changed everything.", name: "Mr. Emeka N.", role: "Private Tutor, Abuja" },
-                { quote: "I teach 200 students per semester. The university profile with matric numbers is exactly what I needed. Questions are at the right academic level.", name: "Dr. Funmilayo A.", role: "Lecturer, University of Lagos" },
+                { quote: "I created my first assessment in literally 3 minutes. The AI questions were perfect for my JSS3 class. My students actually read their explanations now.", name: "Mrs. Adaeze O.", role: "Mathematics Teacher, Lagos", avatarUrl: null },
+                { quote: "As an online tutor I used to spend hours marking. Now results come in automatically and students get explanations immediately. GradeMee changed everything.", name: "Mr. Emeka N.", role: "Private Tutor, Abuja", avatarUrl: null },
+                { quote: "I teach 200 students per semester. The university profile with matric numbers is exactly what I needed. Questions are at the right academic level.", name: "Dr. Funmilayo A.", role: "Lecturer, University of Lagos", avatarUrl: null },
               ].map((t, i) => (
                 <div key={i} style={{
                   background: '#fff', borderRadius: '16px', padding: '24px',
@@ -542,9 +543,19 @@ export default function LandingPage() {
                     {[...Array(5)].map((_, j) => <Star key={j} size={13} fill={B.amber} color={B.amber} />)}
                   </div>
                   <p style={{ fontSize: '14px', color: B.inkMid, lineHeight: 1.7, marginBottom: '16px', fontStyle: 'italic' }}>"{t.quote}"</p>
-                  <div>
-                    <p style={{ fontSize: '13px', fontWeight: 700, color: B.ink }}>{t.name}</p>
-                    <p style={{ fontSize: '12px', color: B.inkFaint, marginTop: '2px' }}>{t.role}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* Avatar — set t.avatarUrl to show a real photo */}
+                    {t.avatarUrl ? (
+                      <img src={t.avatarUrl} alt={t.name} style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} loading="lazy" />
+                    ) : (
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: B.darkDeep, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>{t.name.charAt(0)}</span>
+                      </div>
+                    )}
+                    <div>
+                      <p style={{ fontSize: '13px', fontWeight: 700, color: B.ink }}>{t.name}</p>
+                      <p style={{ fontSize: '12px', color: B.inkFaint, marginTop: '2px' }}>{t.role}</p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -552,81 +563,28 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── PRICING ──────────────────────────────────────────────── */}
-        <section aria-labelledby="pricing-heading" id="pricing" style={{ padding: '80px 0' }}>
-          <div ref={priceRef} style={{ maxWidth: '960px', margin: '0 auto', padding: '0 24px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '56px' }}>
-              <h2 id="pricing-heading" style={{ fontSize: 'clamp(22px, 4vw, 34px)', fontWeight: 800, color: B.ink, marginBottom: '12px' }}>Simple, fair pricing</h2>
-              <p style={{ fontSize: '16px', color: B.inkFaint }}>Free to start. Pay only for AI generation — not to use the platform.</p>
-            </div>
-            <div style={{ display: 'grid', gap: '24px', alignItems: 'start' }} className="md:grid-cols-2">
-
-              {/* Free plan */}
-              <div style={{ background: '#fff', borderRadius: '20px', padding: '32px', border: `2px solid ${B.border}` }}>
-                <p style={{ fontSize: '13px', fontWeight: 700, color: B.inkFaint, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Free forever</p>
-                <p style={{ fontSize: '36px', fontWeight: 800, color: B.ink, marginBottom: '4px' }}>₦0</p>
-                <p style={{ fontSize: '14px', color: B.inkFaint, marginBottom: '28px' }}>No credit card needed</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
-                  {[
-                    'Unlimited assessments',
-                    'Unlimited student submissions',
-                    'Manual question entry',
-                    'Copy-paste AI prompt generation',
-                    'Full results dashboard',
-                    'Share link — no student login needed',
-                  ].map(f => <CheckItem key={f}>{f}</CheckItem>)}
-                </div>
-                <Link href="/signup" style={{
-                  display: 'block', textAlign: 'center', background: B.surface,
-                  color: B.darkDeep, fontWeight: 700, fontSize: '14px',
-                  padding: '13px', borderRadius: '12px', textDecoration: 'none',
-                  border: `2px solid ${B.border}`, transition: 'all 0.15s',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = B.darkDeep }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = B.border }}>
-                  Get started free →
-                </Link>
-              </div>
-
-              {/* Credits plan */}
-              <div style={{ background: B.darkDeep, borderRadius: '20px', padding: '32px', border: `2px solid ${B.amber}40`, position: 'relative', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', top: 0, right: 0, background: B.amber, padding: '6px 16px', fontSize: '11px', fontWeight: 800, color: B.darkDeep, borderRadius: '0 20px 0 12px' }}>MOST POPULAR</div>
-                <p style={{ fontSize: '13px', fontWeight: 700, color: B.amber, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Credits plan</p>
-                <p style={{ fontSize: '36px', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>₦2,500</p>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', marginBottom: '28px' }}>for 50 credits · ₦50 per question</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px' }}>
-                  {[
-                    'Everything in Free',
-                    '1 credit = 1 AI-generated question',
-                    'MCQ, True/False, Fill-in questions',
-                    'Step-by-step explanations generated',
-                    'Hints generated automatically',
-                    'Credits never expire',
-                  ].map(f => (
-                    <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                      <CheckCircle size={16} color={B.amber} style={{ flexShrink: 0, marginTop: '2px' }} />
-                      <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.75)' }}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-                <Link href="/signup" style={{
-                  display: 'block', textAlign: 'center',
-                  background: B.amber, color: B.darkDeep,
-                  fontWeight: 800, fontSize: '14px',
-                  padding: '13px', borderRadius: '12px', textDecoration: 'none',
-                  transition: 'all 0.15s',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.transform = 'translateY(-1px)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = B.amber; e.currentTarget.style.transform = '' }}>
-                  Get Started Free →
-                </Link>
-                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginTop: '10px', textAlign: 'center' }}>1 credit = 1 AI-generated question · Credits never expire</p>
-              </div>
-            </div>
+        {/* ── PRICING — simple statement ──────────────────────────── */}
+        <section id="pricing" style={{ padding: '80px 24px', background: B.surface, borderTop: `1px solid ${B.border}`, borderBottom: `1px solid ${B.border}` }}>
+          <div style={{ maxWidth: '560px', margin: '0 auto', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+            <span style={{ background: B.darkDeep, color: '#fff', padding: '6px 18px', borderRadius: '99px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+              Free to use
+            </span>
+            <h2 style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: 800, color: B.ink, lineHeight: 1.2, margin: 0 }}>
+              Create assessments, share links, and see every result — free.
+            </h2>
+            <p style={{ fontSize: '16px', color: B.inkMuted, lineHeight: 1.7, margin: 0 }}>
+              GradeMee is free. Create unlimited assessments, share with students, and get instant results at no cost. AI question generation uses credits — starting from ₦500 for 100 questions.
+            </p>
+            <Link href="/signup"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: B.amber, color: B.darkDeep, fontWeight: 800, fontSize: '15px', padding: '14px 28px', borderRadius: '12px', textDecoration: 'none', transition: 'all 0.2s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = B.darkDeep; e.currentTarget.style.color = B.amber }}
+              onMouseLeave={e => { e.currentTarget.style.background = B.amber; e.currentTarget.style.color = B.darkDeep }}>
+              Get Started Free →
+            </Link>
           </div>
         </section>
 
-        {/* ── FAQ ──────────────────────────────────────────────────── */}
+                {/* ── FAQ ──────────────────────────────────────────────────── */}
         <section aria-labelledby="faq-heading" id="faq" style={{ background: B.surface, borderTop: `1px solid ${B.border}`, borderBottom: `1px solid ${B.border}`, padding: '80px 0' }}>
           <div style={{ maxWidth: '720px', margin: '0 auto', padding: '0 24px' }}>
             <div style={{ textAlign: 'center', marginBottom: '48px' }}>

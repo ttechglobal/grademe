@@ -34,31 +34,39 @@ export const CREDIT_COSTS = {
   SCENARIO_GENERATION_PER_QUESTION:   5,   // future
 }
 
-// ── Credit packages available for purchase ─────────────────────────────────
 export const CREDIT_PACKAGES = [
   {
     id:            'starter',
     credits:       100,
     amount_naira:  500,
-    label:         '100 Credits',
+    amount_usd:    0.50,
+    label:         'Starter',
     popular:       false,
-    description:   '~100 AI-generated questions',
+    description:   '100 AI-generated questions',
+    per:           '₦5 per question',
+    value_label:   null,
   },
   {
     id:            'standard',
     credits:       500,
     amount_naira:  2000,
-    label:         '500 Credits',
+    amount_usd:    2.00,
+    label:         'Standard',
     popular:       true,
-    description:   '~500 AI-generated questions',
+    description:   '500 AI-generated questions',
+    per:           '₦4 per question',
+    value_label:   'Save 20%',
   },
   {
     id:            'pro',
     credits:       1000,
     amount_naira:  3500,
-    label:         '1,000 Credits',
+    amount_usd:    3.50,
+    label:         'Pro',
     popular:       false,
-    description:   '~1,000 AI-generated questions',
+    description:   '1,000 AI-generated questions',
+    per:           '₦3.50 per question',
+    value_label:   'Best value',
   },
 ]
 
