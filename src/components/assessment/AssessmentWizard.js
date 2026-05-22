@@ -1,5 +1,20 @@
 'use client'
 
+/**
+ * AssessmentWizard
+ *
+ * Step 0 (question type selection) is intentionally bypassed.
+ * The wizard starts directly at step 1 (Setup), defaulting to MCQ.
+ *
+ * Why: calculation and stepwise question types have grading pipeline
+ * issues not yet resolved for production. Hiding the type step removes
+ * any path to broken functionality. True/False is available, but most
+ * teachers start with MCQ, and they can pick T/F in a future release
+ * of this step once all types are stable.
+ *
+ * To re-enable: change START_STEP back to 0.
+ */
+
 import { useState, useEffect } from 'react'
 import { useRouter }      from 'next/navigation'
 import { createClient }   from '@/lib/supabase/client'
@@ -8,6 +23,10 @@ import StepSetup          from './StepSetup'
 import StepQuestions      from './StepQuestions'
 import StepShare          from './StepShare'
 import { cn } from '@/lib/utils'
+
+// ── Feature flag: set to 0 to re-show question type selection step ────────
+const START_STEP    = 1
+const DEFAULT_TYPE  = 'mcq'
 
 const STEPS = [
   { number: 1, label: 'Setup'     },
@@ -18,8 +37,9 @@ const STEPS = [
 export default function AssessmentWizard({ curriculum = 'uk' }) {
   const router = useRouter()
 
-  const [step,           setStep]           = useState(0)
-  const [questionType,   setQuestionType]   = useState(null)
+  // Start at step 1, type already set to MCQ
+  const [step,           setStep]           = useState(START_STEP)
+  const [questionType,   setQuestionType]   = useState(DEFAULT_TYPE)
   const [useCaseProfile, setUseCaseProfile] = useState('k12_tutor')
 
   useEffect(() => {
@@ -41,8 +61,8 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
     classLevel:         '',
     assessmentType:     '',
     title:              '',
-    questionMode:       'mcq',
-    questionType:       null,   // the canonical type — set when tutor picks on step 0
+    questionMode:       DEFAULT_TYPE === 'true_false' ? 'true_false' : 'mcq',
+    questionType:       DEFAULT_TYPE,
     curriculum:         '',
     timerEnabled:       false,
     timeLimitMins:      30,
@@ -56,15 +76,13 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   const updateSetup = (field, value) =>
     setSetupData((prev) => ({ ...prev, [field]: value }))
 
-  // Called by StepQuestionType when the tutor picks a type
+  // Preserved for when step 0 is re-enabled
   const handleTypeSelect = (typeId) => {
     setQuestionType(typeId)
-    // Keep questionMode for legacy downstream consumers (MCQ / TF),
-    // and also store the canonical questionType so the server action can read it.
     setSetupData((prev) => ({
       ...prev,
       questionMode: typeId === 'true_false' ? 'true_false' : 'mcq',
-      questionType: typeId,   // ← this is the fix — passes 'calculation' through
+      questionType: typeId,
     }))
     setStep(1)
   }
@@ -72,7 +90,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
   return (
     <div className="max-w-2xl mx-auto">
 
-      {/* Step indicator — only shown once wizard begins (step >= 1) */}
+      {/* Step indicator — shown from step 1 onward */}
       {step >= 1 && (
         <div className="flex items-center gap-0 mb-10">
           {STEPS.map((s, i) => (
@@ -105,6 +123,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
 
       <div className="bg-white border border-border rounded-3xl p-8 shadow-card">
 
+        {/* Step 0 hidden — preserved for re-enabling */}
         {step === 0 && (
           <StepQuestionType onSelect={handleTypeSelect} />
         )}
@@ -114,7 +133,11 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             data={setupData}
             onChange={updateSetup}
             onNext={() => setStep(2)}
-            onBack={() => setStep(0)}
+            onBack={() => {
+              // Back from step 1: if type step is hidden, nothing to go back to
+              if (START_STEP === 0) setStep(0)
+              else router.push('/dashboard/assessments')
+            }}
             accountCurriculum={curriculum}
             questionType={questionType}
           />
@@ -129,7 +152,7 @@ export default function AssessmentWizard({ curriculum = 'uk' }) {
             setupData={setupData}
             questionType={questionType}
             onNext={() => setStep(3)}
-            onBack={() => { setStep(1) }}
+            onBack={() => setStep(1)}
           />
         )}
 

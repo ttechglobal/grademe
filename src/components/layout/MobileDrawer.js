@@ -1,35 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link                    from 'next/link'
 import { usePathname }         from 'next/navigation'
-import { Menu, X, Users2, HelpCircle, ChevronRight } from 'lucide-react'
-import { NavLinks }            from '@/components/layout/Sidebar'
-import { useUseCaseProfile }  from '@/hooks/useUseCaseProfile'
-import { buildNavGroups }     from '@/components/layout/Sidebar'
-import { cn }                  from '@/lib/utils'
+import { Menu, X, Zap }        from 'lucide-react'
+import { NavLinks, buildNavGroups } from '@/components/layout/Sidebar'
+import { useUseCaseProfile }        from '@/hooks/useUseCaseProfile'
+import { useCredits }               from '@/hooks/useCredits'
 
-/**
- * MobileDrawer
- *
- * Renders a hamburger button (visible only on mobile, hidden on md+).
- * Tapping it slides in a full-height drawer with the exact same nav
- * links as the desktop Sidebar — because both import NAV_GROUPS from
- * the same source. Students, Assessments, Question Bank etc. are all
- * guaranteed to be present.
- *
- * Usage: render <MobileDrawer /> inside the Topbar.
- */
 export default function MobileDrawer() {
-  const [open,    setOpen]    = useState(false)
-  const pathname              = usePathname()
-  const { config }            = useUseCaseProfile()
-  const navGroups             = buildNavGroups(config.participantsLabel)
+  const [open,  setOpen]  = useState(false)
+  const pathname          = usePathname()
+  const { config }        = useUseCaseProfile()
+  const navGroups         = buildNavGroups(config.participantsLabel)
+  const { credits }       = useCredits()
 
-  // Close drawer on route change
   useEffect(() => { setOpen(false) }, [pathname])
-
-  // Prevent body scroll when drawer is open
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
@@ -37,82 +22,69 @@ export default function MobileDrawer() {
 
   return (
     <>
-      {/* ── Hamburger button — only visible on mobile ─────────────── */}
+      {/* Hamburger — dark on cream background */}
       <button
         onClick={() => setOpen(true)}
-        aria-label="Open navigation menu"
-        className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors"
+        aria-label="Open navigation"
+        style={{
+          width: '38px', height: '38px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '8px', background: 'none', border: 'none', cursor: 'pointer',
+        }}
       >
-        <Menu size={20} className="text-white" />
+        <Menu size={22} style={{ color: '#0f2e2e' }} />
       </button>
 
-      {/* ── Backdrop ──────────────────────────────────────────────── */}
+      {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
           onClick={() => setOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 40, backgroundColor: 'rgba(0,0,0,0.35)' }}
         />
       )}
 
-      {/* ── Drawer ────────────────────────────────────────────────── */}
-      <aside
-        className={cn(
-          'fixed top-0 left-0 bottom-0 z-50 w-[280px] bg-brand-900',
-          'flex flex-col shadow-2xl transition-transform duration-300 ease-out md:hidden',
-          open ? 'translate-x-0' : '-translate-x-full'
-        )}
-      >
-        {/* Logo + tagline + close */}
-        <div className="flex items-start justify-between px-6 py-5 border-b border-white/10 flex-shrink-0">
-          <div>
-            <div className="font-display text-xl font-bold select-none">
-              <span className="text-white">Grade</span>
-              <span className="text-amber">Mee</span>
-            </div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-white/30 mt-1 select-none">
-              Empowering Learning
-            </p>
-          </div>
-          <button
-            onClick={() => setOpen(false)}
-            aria-label="Close menu"
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors mt-0.5"
-          >
-            <X size={18} className="text-white" />
+      {/* Drawer — GradeMee dark teal */}
+      <aside style={{
+        position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50,
+        width: '272px',
+        backgroundColor: '#0f2e2e',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '4px 0 24px rgba(0,0,0,0.15)',
+        transform: open ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.25s ease',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+        }}>
+          <span style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '-0.3px' }}>
+            <span style={{ color: '#fff' }}>Grade</span>
+            <span style={{ color: '#f5a623' }}>Mee</span>
+          </span>
+          <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+            <X size={20} style={{ color: 'rgba(255,255,255,0.5)' }} />
           </button>
         </div>
 
-        {/* Nav — imported from Sidebar, identical to desktop */}
-        <nav className="flex-1 py-5 overflow-y-auto">
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
           <NavLinks groups={navGroups} onNavigate={() => setOpen(false)} />
         </nav>
 
-        {/* Community */}
-        <div className="mx-3 mb-3">
-          <a
-            href="https://chat.whatsapp.com/grademe-teachers"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2.5 px-4 py-3 bg-amber/10 border border-amber/20 rounded-xl hover:bg-amber/15 transition-colors group"
-          >
-            <Users2 size={15} className="text-amber flex-shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-amber leading-none">Teacher Community</p>
-              <p className="text-[10px] text-white/30 mt-0.5">Join our WhatsApp group</p>
-            </div>
-            <ChevronRight size={12} className="text-amber/40 group-hover:text-amber/70 flex-shrink-0" />
+        {/* Footer */}
+        <div style={{ padding: '12px 20px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <a href="/dashboard/credits" style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            fontSize: '12px', fontWeight: '600', color: '#f5a623', textDecoration: 'none',
+          }}>
+            <Zap size={11} style={{ color: '#f5a623' }} />
+            {credits} credit{credits !== 1 ? 's' : ''}
           </a>
-        </div>
-
-        {/* Help */}
-        <div className="mx-3 mb-5 p-4 bg-white/5 rounded-xl">
-          <div className="flex items-center gap-2 mb-1">
-            <HelpCircle size={13} className="text-white/30" />
-            <span className="text-xs font-semibold text-white/60">Need help?</span>
-          </div>
-          <p className="text-[11px] text-white/25 leading-relaxed">
-            Reach out to support or check our docs.
-          </p>
+          <a href="mailto:hello@grademee.app" style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', textDecoration: 'none' }}>
+            Need help?
+          </a>
         </div>
       </aside>
     </>

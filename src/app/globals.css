@@ -1,73 +1,67 @@
-/* ── Google Fonts: Nunito ─────────────────────────────────────────────────── */
-/* Warm, rounded, friendly — ideal for an EdTech product.                     */
-/* font-display:swap is set in the URL params — no render blocking.           */
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
-
 @import "tailwindcss";
 
 @theme {
-  /* Nunito is used for all text — headings and body alike.
-     font-display is kept as an alias so existing font-display classes
-     continue to work without any template changes. */
   --font-sans:    'Nunito', system-ui, -apple-system, sans-serif;
   --font-display: 'Nunito', system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, monospace;
 
-  /* Brand (teal) */
-  --color-brand-50:  #f4fbfb;
-  --color-brand-100: #e0f5f5;
-  --color-brand-200: #a8e6e6;
-  --color-brand-300: #4db8b8;
-  --color-brand-400: #2e9090;
+  /* ── Brand teal — preserved exactly ─────────────────────────────────── */
+  --color-brand-50:  #f0f7f4;
+  --color-brand-100: #d8ede6;
+  --color-brand-200: #a8d9c8;
+  --color-brand-300: #6bbfa5;
+  --color-brand-400: #3da07e;
   --color-brand-500: #217070;
-  --color-brand-600: #1a5454;
+  --color-brand-600: #1a5757;
   --color-brand-700: #134040;
   --color-brand-800: #0f2e2e;
   --color-brand-900: #0a1f1f;
 
-  /* Amber accent */
-  --color-amber-light: #ffecc4;
+  /* ── Amber accent — preserved ─────────────────────────────────────── */
   --color-amber:       #f5a623;
+  --color-amber-light: #fef3c7;
 
-  /* Neutrals */
-  --color-ink:        #0d1b1b;
-  --color-ink-2:      #2a3d3d;
-  --color-ink-3:      #4a6060;
-  --color-ink-4:      #7a9898;
-  --color-border:     #d8ecec;
-  --color-surface:    #f2f8f8;
+  /* ── New text colours (warmer neutrals) ──────────────────────────── */
+  --color-ink:   #1a1a1a;
+  --color-ink-2: #2d2d2d;
+  --color-ink-3: #4b5563;
+  --color-ink-4: #9ca3af;
 
-  /* Status */
-  --color-success:       #2da44e;
-  --color-success-light: #ddf4e4;
-  --color-danger:        #e5534b;
-  --color-danger-light:  #fde8e7;
+  /* ── App background — light green tint (brand-aligned) ───────────── */
+  --color-surface: #f0f7f4;
+  --color-border:  #e2ede8;
 
-  /* Shadows */
-  --shadow-card: 0 4px 20px rgba(13,31,31,0.08);
-  --shadow-lg:   0 12px 48px rgba(13,31,31,0.12);
+  /* ── Status ────────────────────────────────────────────────────── */
+  --color-success:       #16a34a;
+  --color-success-light: #dcfce7;
+  --color-danger:        #dc2626;
+  --color-danger-light:  #fee2e2;
 
-  /* Border radius */
-  --radius-xl:  14px;
-  --radius-2xl: 18px;
-  --radius-3xl: 24px;
+  /* ── Shadows ────────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px #e2ede8;
+  --shadow-md:   0 4px 12px rgba(0,0,0,0.07);
+
+  /* ── Radius ─────────────────────────────────────────────────────── */
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
 }
 
 @layer base {
-  html {
+  html, body {
     font-family: var(--font-sans);
-    color: var(--color-ink);
-    background-color: var(--color-surface);
+    background-color: #f0f7f4;
+    color: #1a1a1a;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-sans);
-  }
-
-  /* Keep monospace strictly for code and math — not affected by font change */
-  pre, code, .font-mono {
-    font-family: var(--font-mono);
-  }
+  h1,h2,h3,h4,h5,h6 { font-family: var(--font-sans); color: #1a1a1a; }
+  pre, code, .font-mono { font-family: var(--font-mono); }
 }
+
+/* Utility aliases so existing Tailwind classes resolve correctly */
+.bg-surface   { background-color: #f0f7f4 !important; }
+.border-border { border-color: #e2ede8 !important; }
+.bg-brand-900 { background-color: #0a1f1f !important; }
+.bg-brand-800 { background-color: #0f2e2e !important; }

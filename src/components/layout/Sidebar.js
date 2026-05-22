@@ -1,177 +1,243 @@
 'use client'
 
-import Link        from 'next/link'
+/**
+ * Sidebar — GradeMee design inspired by Chalkie.ai layout patterns
+ *
+ * What we borrowed from Chalkie:
+ *   - Avatar photo (or initials) at the very top — personal, warm
+ *   - Nav items: full-width pill for active state (not just a left border)
+ *   - No section headers — flat, clean nav list
+ *   - Spacious item padding — not cramped
+ *   - Soft bottom section for help/credits
+ *
+ * What stays GradeMee:
+ *   - Dark teal sidebar (#0f2e2e) — our brand color
+ *   - Amber (#f5a623) for active state — our accent
+ *   - GradeMee wordmark and logo treatment
+ */
+
+import Link            from 'next/link'
 import { usePathname } from 'next/navigation'
-import { cn } from '@/lib/utils'
+import { cn }          from '@/lib/utils'
 import {
   LayoutDashboard, ClipboardList, Users,
-  BookOpen, Sparkles, Settings,
-  HelpCircle, Users2, ChevronRight, Zap,
+  BookOpen, Settings, Zap,
 } from 'lucide-react'
-import { FLAGS } from '@/lib/featureFlags'
 import { useUseCaseProfile } from '@/hooks/useUseCaseProfile'
+import { useCredits }        from '@/hooks/useCredits'
 
-// Build nav groups dynamically — participantsLabel changes per use case profile
+// ── Nav definition (flat — no section headers like Chalkie) ────────────────
 export function buildNavGroups(participantsLabel = 'Students') {
   return [
     {
-      section: 'Overview',
       links: [
-        { label: 'Dashboard',           href: '/dashboard',             icon: LayoutDashboard },
-        { label: 'Assessments',         href: '/dashboard/assessments', icon: ClipboardList   },
-        { label: participantsLabel,     href: '/dashboard/students',    icon: Users           },
+        { label: 'Home',            href: '/dashboard',             icon: LayoutDashboard },
+        { label: 'Assessments',     href: '/dashboard/assessments', icon: ClipboardList   },
+        { label: participantsLabel, href: '/dashboard/students',    icon: Users           },
+        { label: 'Question Bank',   href: '/dashboard/questions',   icon: BookOpen        },
       ],
     },
     {
-      section: 'Tools',
+      divider: true,
       links: [
-        { label: 'Question Bank',    href: '/dashboard/questions',   icon: BookOpen  },
-        { label: 'Import Questions', href: '/dashboard/ai-import',   icon: Sparkles  },
-        ...(FLAGS.CREDITS_COMING_SOON_UI ? [
-          { label: 'Credits', href: '/dashboard/credits', icon: Zap, badge: 'Soon' },
-        ] : []),
-      ],
-    },
-    {
-      section: 'Account',
-      links: [
-        { label: 'Settings',         href: '/dashboard/settings',    icon: Settings  },
+        { label: 'Settings', href: '/dashboard/settings', icon: Settings },
       ],
     },
   ]
 }
 
-// Keep backward-compatible export for MobileDrawer
 export const NAV_GROUPS = buildNavGroups('Students')
 
-/**
- * Longest-prefix-wins active link resolution.
- * Prevents /dashboard from lighting up on every /dashboard/* route.
- */
 export function resolveActive(pathname) {
   const allHrefs = NAV_GROUPS.flatMap((g) => g.links.map((l) => l.href))
-  // Exact match wins first
   if (allHrefs.includes(pathname)) return pathname
-  // Otherwise pick the longest prefix match
   let best = null
   for (const href of allHrefs) {
-    if (pathname.startsWith(href + '/') && (!best || href.length > best.length)) {
-      best = href
-    }
+    if (pathname.startsWith(href + '/') && (!best || href.length > best.length)) best = href
   }
   return best
 }
 
-// ── NavLinks ───────────────────────────────────────────────────────────────
-// Reusable nav link renderer used by both Sidebar and MobileDrawer
-export function NavLinks({ onNavigate, groups }) {
-  const pathname  = usePathname()
-  const navGroups = groups ?? NAV_GROUPS
-  const active   = resolveActive(pathname)
+// ── Nav links — used by both desktop sidebar and mobile drawer ─────────────
+export function NavLinks({ groups, onNavigate }) {
+  const pathname   = usePathname()
+  const activeHref = resolveActive(pathname)
+  const allGroups  = groups ?? NAV_GROUPS
 
   return (
-    <>
-      {navGroups.map((group) => (
-        <div key={group.section} className="mb-5">
-          <p className="px-6 pb-1 text-[10px] font-bold uppercase tracking-widest text-white/25">
-            {group.section}
-          </p>
-          {group.links.map(({ label, href, icon: Icon, badge }) => {
-            const isActive = active === href
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      {allGroups.map((group, gi) => (
+        <div key={gi}>
+          {group.divider && (
+            <div style={{
+              height: '1px',
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              margin: '10px 16px',
+            }} />
+          )}
+          {group.links.map(({ label, href, icon: Icon }) => {
+            const isActive = activeHref === href
             return (
               <Link
                 key={href}
                 href={href}
                 onClick={onNavigate}
-                className={cn(
-                  'group relative flex items-center gap-3 px-5 py-2.5 mx-2 rounded-xl',
-                  'text-sm font-medium transition-all duration-150',
-                  isActive
-                    ? 'bg-white/10 text-white'
-                    : 'text-white/45 hover:text-white/80 hover:bg-white/6'
-                )}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  /* Chalkie-style: full-width pill for active */
+                  padding: '11px 14px',
+                  margin: '1px 10px',
+                  borderRadius: '10px',
+                  fontSize: '14px',
+                  fontWeight: isActive ? '700' : '400',
+                  textDecoration: 'none',
+                  transition: 'all 0.12s ease',
+                  /* Active: amber pill — GradeMee brand */
+                  backgroundColor: isActive ? '#f5a623' : 'transparent',
+                  color: isActive ? '#0f2e2e' : 'rgba(255,255,255,0.65)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
+                    e.currentTarget.style.color = 'rgba(255,255,255,0.9)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                    e.currentTarget.style.color = 'rgba(255,255,255,0.65)'
+                  }
+                }}
               >
-                {isActive && (
-                  <span className="absolute left-0 top-2 bottom-2 w-[3px] bg-amber rounded-r-full" />
-                )}
                 <Icon
-                  size={16}
-                  className={cn(
-                    'flex-shrink-0 transition-colors duration-150',
-                    isActive ? 'text-amber' : 'text-white/35 group-hover:text-white/60'
-                  )}
+                  size={17}
+                  style={{
+                    flexShrink: 0,
+                    color: isActive ? '#0f2e2e' : 'rgba(255,255,255,0.45)',
+                  }}
                 />
-                <span className="flex-1 leading-none">{label}</span>
-                {badge && (
-                  <span className="text-[9px] font-bold uppercase tracking-wide bg-amber/15 text-amber px-1.5 py-0.5 rounded-full flex-shrink-0">
-                    {badge}
-                  </span>
-                )}
+                <span style={{ lineHeight: 1.2 }}>{label}</span>
               </Link>
             )
           })}
         </div>
       ))}
-    </>
+    </div>
   )
 }
 
-// ── Bottom section (community + help) ─────────────────────────────────────
-function SidebarBottom() {
+// ── Credits pill ───────────────────────────────────────────────────────────
+function CreditsPill() {
+  const { credits, loading } = useCredits()
+  if (loading) return null
   return (
-    <>
-      <div className="mx-3 mb-3">
-        <a
-          href="https://chat.whatsapp.com/grademe-teachers"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2.5 px-4 py-3 bg-amber/10 border border-amber/20 rounded-xl hover:bg-amber/15 transition-colors group"
-        >
-          <Users2 size={15} className="text-amber flex-shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-amber leading-none">Teacher Community</p>
-            <p className="text-[10px] text-white/30 mt-0.5">Join our WhatsApp group</p>
-          </div>
-          <ChevronRight size={12} className="text-amber/40 group-hover:text-amber/70 flex-shrink-0" />
-        </a>
-      </div>
-
-      <div className="mx-3 mb-5 p-4 bg-white/5 rounded-xl">
-        <div className="flex items-center gap-2 mb-1">
-          <HelpCircle size={13} className="text-white/30" />
-          <span className="text-xs font-semibold text-white/60">Need help?</span>
-        </div>
-        <p className="text-[11px] text-white/25 leading-relaxed">Reach out to support or check our docs.</p>
-      </div>
-    </>
+    <Link
+      href="/dashboard/credits"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '5px',
+        fontSize: '12px',
+        fontWeight: '600',
+        color: '#f5a623',
+        textDecoration: 'none',
+        padding: '5px 10px',
+        borderRadius: '20px',
+        border: '1px solid rgba(245,166,35,0.25)',
+        backgroundColor: 'rgba(245,166,35,0.08)',
+        transition: 'background-color 0.12s',
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(245,166,35,0.14)'}
+      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(245,166,35,0.08)'}
+    >
+      <Zap size={11} style={{ color: '#f5a623' }} />
+      {credits} credit{credits !== 1 ? 's' : ''}
+    </Link>
   )
 }
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
-export default function Sidebar() {
+export default function Sidebar({ user }) {
   const { config } = useUseCaseProfile()
   const navGroups  = buildNavGroups(config.participantsLabel)
 
-  return (
-    <aside className="w-[220px] min-h-screen bg-brand-900 flex flex-col flex-shrink-0 hidden md:flex">
+  const displayName = user?.name  ?? 'Teacher'
+  const role        = user?.role  ?? 'Teacher'
+  const initial     = displayName.charAt(0).toUpperCase()
 
-      {/* Logo + tagline */}
-      <div className="px-6 py-7 border-b border-white/10 flex-shrink-0">
-        <div className="font-display text-2xl font-bold select-none">
-          <span className="text-white">Grade</span>
-          <span className="text-amber">Mee</span>
+  return (
+    <aside
+      style={{
+        width: '248px',
+        minHeight: '100vh',
+        /* GradeMee dark teal — our brand color, kept */
+        backgroundColor: '#0f2e2e',
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+      }}
+    >
+      {/* ── Teacher profile — Chalkie puts avatar at top ── */}
+      <div style={{
+        padding: '24px 20px 20px',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+      }}>
+        {/* Avatar — circle with initial (replace src with real photo later) */}
+        <div style={{
+          width: '48px', height: '48px', borderRadius: '50%',
+          backgroundColor: '#f5a623',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: '12px',
+          fontWeight: '800', fontSize: '18px', color: '#0f2e2e',
+        }}>
+          {initial}
         </div>
-        <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-white/30 mt-1 select-none">
-          Empowering Learning
+        <p style={{
+          fontSize: '14px', fontWeight: '700', color: '#ffffff',
+          lineHeight: 1.3,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {displayName}
+        </p>
+        <p style={{
+          fontSize: '12px', fontWeight: '400', color: 'rgba(255,255,255,0.45)',
+          marginTop: '2px',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {role}
         </p>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 py-5 overflow-y-auto">
+      {/* ── Nav — Chalkie-style flat list with amber pill active ── */}
+      <nav style={{ flex: 1, padding: '14px 0', overflowY: 'auto' }}>
         <NavLinks groups={navGroups} />
       </nav>
 
-      <SidebarBottom />
+      {/* ── Bottom: credits + help — simple, no box ── */}
+      <div style={{
+        padding: '12px 20px 20px',
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+      }}>
+        <CreditsPill />
+        <a
+          href="mailto:hello@grademee.app"
+          style={{
+            fontSize: '12px',
+            color: 'rgba(255,255,255,0.35)',
+            textDecoration: 'none',
+            transition: 'color 0.12s',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.65)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.35)'}
+        >
+          Need help?
+        </a>
+      </div>
     </aside>
   )
 }

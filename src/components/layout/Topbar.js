@@ -2,60 +2,102 @@
 
 import { useState, useEffect } from 'react'
 import { createClient }        from '@/lib/supabase/client'
-import { useRouter }           from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import MobileDrawer            from '@/components/layout/MobileDrawer'
 import Avatar                  from '@/components/ui/Avatar'
-import CreditsDisplay          from '@/components/ui/CreditsDisplay'
-import { LogOut, Settings }    from 'lucide-react'
+import { LogOut, Settings, Zap } from 'lucide-react'
 import Link                    from 'next/link'
+import { useCredits }          from '@/hooks/useCredits'
 
-export default function Topbar() {
-  const router  = useRouter()
-  const [user,  setUser]  = useState(null)
-  const [open,  setOpen]  = useState(false)
+function usePageTitle() {
+  const p = usePathname()
+  if (p === '/dashboard')                         return 'Home'
+  if (p.startsWith('/dashboard/assessments/new')) return 'New Assessment'
+  if (p.startsWith('/dashboard/assessments'))     return 'Assessments'
+  if (p.startsWith('/dashboard/students'))        return 'Students'
+  if (p.startsWith('/dashboard/questions'))       return 'Question Bank'
+  if (p.startsWith('/dashboard/credits'))         return 'Credits'
+  if (p.startsWith('/dashboard/settings'))        return 'Settings'
+  return 'GradeMee'
+}
+
+function TopbarCredits() {
+  const { credits, loading } = useCredits()
+  if (loading) return null
+  return (
+    <Link href="/dashboard/credits" style={{
+      display: 'flex', alignItems: 'center', gap: '4px',
+      fontSize: '13px', fontWeight: '500', color: '#f5a623',
+      textDecoration: 'none', padding: '6px 10px',
+      borderRadius: '6px', backgroundColor: '#fef3c7',
+    }}>
+      <Zap size={12} style={{ color: '#f5a623' }} />
+      {credits}
+    </Link>
+  )
+}
+
+export default function Topbar({ user: userProp }) {
+  const router = useRouter()
+  const title  = usePageTitle()
+  const [user, setUser] = useState(userProp ?? null)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user))
-  }, [])
+    if (!userProp) {
+      createClient().auth.getUser().then(({ data: { user: u } }) => setUser(u))
+    }
+  }, [userProp])
 
   const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await createClient().auth.signOut()
     router.push('/login')
   }
 
-  const displayName = user?.user_metadata?.full_name
+  const displayName = userProp?.name
+    || user?.user_metadata?.full_name
     || user?.email?.split('@')[0]
     || 'Teacher'
 
   return (
-    <header className="h-14 bg-brand-900 border-b border-white/10 flex items-center justify-between px-4 md:px-6 flex-shrink-0 sticky top-0 z-30">
+    <header style={{
+      height: '56px',
+      backgroundColor: '#ffffff',
+      borderBottom: '1px solid #e2ede8',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '0 24px',
+      flexShrink: 0,
+      position: 'sticky', top: 0, zIndex: 30,
+    }}>
 
-      {/* Left: hamburger (mobile only) + logo on mobile */}
-      <div className="flex items-center gap-3">
-        {/* Hamburger — MobileDrawer renders the button + overlay + drawer */}
-        <MobileDrawer />
-
-        {/* Brand name on mobile (hidden on desktop — sidebar shows it there) */}
-        <div className="md:hidden font-display text-lg font-bold select-none">
-          <span className="text-white">Grade</span>
-          <span className="text-amber">Mee</span>
+      {/* Left */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="md:hidden">
+          <MobileDrawer />
         </div>
+        {/* Title hidden on mobile (MobileDrawer shows wordmark) */}
+        <h1 className="hidden md:block" style={{
+          fontSize: '20px', fontWeight: '600', color: '#1a1a1a', margin: 0, lineHeight: 1,
+        }}>
+          {title}
+        </h1>
       </div>
 
-      {/* Right: credits + user avatar */}
-      <div className="flex items-center gap-2">
-        <CreditsDisplay />
+      {/* Right */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }}>
+        <div className="hidden sm:block">
+          <TopbarCredits />
+        </div>
 
-        <div className="relative">
-        <button
-          onClick={() => setOpen(!open)}
-          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-          aria-label="Account menu"
-        >
-          <Avatar name={displayName} size="sm" className="flex-shrink-0" />
-          <span className="text-white/70 text-sm font-medium hidden sm:block max-w-[140px] truncate">
+        <button onClick={() => setOpen(!open)} style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+        }}>
+          <Avatar name={displayName} size="sm" />
+          <span className="hidden sm:block" style={{
+            fontSize: '14px', fontWeight: '500', color: '#4b5563',
+            maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
             {displayName}
           </span>
         </button>
@@ -63,30 +105,32 @@ export default function Topbar() {
         {open && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <div className="absolute right-0 top-full mt-2 w-52 bg-white border border-border rounded-2xl shadow-xl z-20 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
-                <p className="text-sm font-semibold text-ink truncate">{displayName}</p>
-                <p className="text-xs text-ink-4 truncate">{user?.email}</p>
+            <div style={{
+              position: 'absolute', right: 0, top: 'calc(100% + 8px)',
+              width: '200px', backgroundColor: '#fff',
+              border: '1px solid #e2ede8', borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 20, overflow: 'hidden',
+            }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #e2ede8' }}>
+                <p style={{ fontSize: '13px', fontWeight: '600', color: '#1a1a1a' }}>{displayName}</p>
+                <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>{user?.email}</p>
               </div>
-              <Link
-                href="/dashboard/settings"
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-sm text-ink hover:bg-surface transition-colors"
-              >
-                <Settings size={15} className="text-ink-4" />
-                Settings
+              <Link href="/dashboard/settings" onClick={() => setOpen(false)} style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '10px 16px', fontSize: '13px', color: '#4b5563', textDecoration: 'none',
+              }}>
+                <Settings size={14} style={{ color: '#9ca3af' }} /> Settings
               </Link>
-              <button
-                onClick={handleSignOut}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-danger hover:bg-danger-light transition-colors"
-              >
-                <LogOut size={15} />
-                Sign out
+              <button onClick={handleSignOut} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '10px 16px', fontSize: '13px', color: '#dc2626',
+                background: 'none', border: 'none', cursor: 'pointer',
+              }}>
+                <LogOut size={14} /> Sign out
               </button>
             </div>
           </>
         )}
-      </div>
       </div>
     </header>
   )

@@ -1,162 +1,162 @@
 'use client'
 
-import { useState, useEffect, use, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import { useToast } from '@/components/ui/ToastProvider'
-import Link from 'next/link'
-import Avatar from '@/components/ui/Avatar'
-import Spinner from '@/components/ui/Spinner'
+import { useState, useEffect, useCallback, use } from 'react'
+import { createClient }  from '@/lib/supabase/client'
+import { useRouter }     from 'next/navigation'
+import { useToast }      from '@/components/ui/ToastProvider'
+import Link              from 'next/link'
+import MathRenderer      from '@/components/ui/MathRenderer'
 import EditQuestionModal from '@/components/assessment/EditQuestionModal'
-import MathRenderer from '@/components/ui/MathRenderer'
 import {
-  ArrowLeft, Eye, BookOpen, Users, BarChart2,
-  Trash2, Pencil, Copy, CheckCheck, Check, X,
-  ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown,
-  AlertTriangle,
+  ArrowLeft, Eye, Copy, CheckCheck, Check, X,
+  ChevronDown, ChevronUp, Pencil, Trash2,
+  Users, BarChart3, ClipboardList, Link2,
+  ChevronsDownUp, ChevronsUpDown,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
-// ── Score helpers ──────────────────────────────────────────────────────────
-
-function scoreColor(score) {
-  if (score >= 75) return 'text-success'
-  if (score >= 50) return 'text-amber'
-  return 'text-danger'
+// ── Design tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:       '#f0f7f4',
+  white:    '#ffffff',
+  border:   '#e2ede8',
+  borderHov:'#c8ddd5',
+  text:     '#1a1a1a',
+  secondary:'#4b5563',
+  muted:    '#9ca3af',
+  brand:    '#0f2e2e',
+  brandHov: '#1a5454',
+  amber:    '#f5a623',
+  green:    '#16a34a',
+  greenBg:  '#dcfce7',
+  danger:   '#dc2626',
+  dangerBg: '#fee2e2',
 }
 
-function scoreBg(score) {
-  if (score >= 75) return 'bg-success-light text-success'
-  if (score >= 50) return 'bg-amber-light text-amber'
-  return 'bg-danger-light text-danger'
+// ── Helpers ────────────────────────────────────────────────────────────────
+function scoreColor(s) {
+  return s >= 75 ? C.green : s >= 50 ? C.amber : C.danger
 }
-
-// ── Question type detection ────────────────────────────────────────────────
-
-function getType(q) {
-  const t = q?.question_type || q?.type || ''
-  if (t === 'calculation')                     return 'calculation'
-  if (t === 'true_false' || t === 'truefalse') return 'true_false'
-  if (t === 'stepwise')                        return 'stepwise'
-  return 'mcq'
+function scoreBg(s) {
+  return s >= 75
+    ? { backgroundColor: C.greenBg, color: C.green }
+    : s >= 50
+    ? { backgroundColor: '#fef3c7', color: '#d97706' }
+    : { backgroundColor: C.dangerBg, color: C.danger }
 }
-
-// ── Answer resolution ──────────────────────────────────────────────────────
-// Handles all storage formats submissions may use:
-//   1. UUID-keyed:  { [questionId]: value }  — current format
-//   2. Index-keyed: { "0": value }            — legacy
-//   3. Array:       [ value, value ]          — oldest legacy
-
+function relDate(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+function getInitial(name) { return (name || 'S').charAt(0).toUpperCase() }
 function resolveAnswer(answers, question, index) {
   if (!answers) return undefined
   if (question?.id && answers[question.id] !== undefined) return answers[question.id]
-  if (answers[index]         !== undefined) return answers[index]
+  if (answers[index] !== undefined) return answers[index]
   if (answers[String(index)] !== undefined) return answers[String(index)]
   return undefined
 }
-
-// ── Score one question correctly by type ──────────────────────────────────
-
 function scoreOne(q, sa) {
-  const typ = getType(q)
-
-  if (typ === 'calculation') {
-    const template  = q.answer_template
-    const boxValues = (typeof sa === 'object' && sa !== null) ? sa : {}
-    if (!template?.structure?.length) return false
-    return template.structure.every((item) => {
-      const sv       = (boxValues[item.id] ?? '').trim().toLowerCase()
-      const accepted = (item.accepted || [item.answer]).map((a) => String(a).trim().toLowerCase())
-      return accepted.includes(sv)
+  if (!sa && sa !== 0) return false
+  const t = q.question_type || q.type || ''
+  if (t === 'calculation') {
+    if (!q.answer_template?.structure?.length) return false
+    const vals = typeof sa === 'object' && sa ? sa : {}
+    return q.answer_template.structure.every((item) => {
+      const sv  = (vals[item.id] ?? '').toString().trim().toLowerCase()
+      const acc = (item.accepted ?? [item.answer]).map((a) => String(a).trim().toLowerCase())
+      return acc.includes(sv)
     })
   }
-
-  if (typ === 'true_false') {
-    if (!sa) return false
-    const correct = /^true/i.test(q.answer || '') ? 'true' : 'false'
-    const student  = /^true/i.test(String(sa))    ? 'true' : 'false'
-    return correct === student
-  }
-
-  if (typ === 'stepwise') {
-    const steps  = q.steps ?? []
-    const blanks = steps.filter((s) => s.is_blank)
-    if (!blanks.length) return false
-    const filled = (typeof sa === 'object' && sa !== null) ? sa : {}
-    return blanks.every((s) => {
-      const sv = (filled[s.id] ?? '').trim().toLowerCase()
-      return sv === (s.answer ?? '').trim().toLowerCase()
-    })
-  }
-
   return (sa ?? '').toString().trim().toUpperCase() === (q.answer ?? '').trim().toUpperCase()
 }
 
-// ── Expandable question card (questions list — teacher view) ───────────────
+// ── Stat pill ──────────────────────────────────────────────────────────────
+function StatPill({ icon: Icon, label, value, valueStyle }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+      padding: '16px 20px',
+      backgroundColor: C.white, border: `1px solid ${C.border}`, borderRadius: '12px',
+      flex: 1, minWidth: '80px',
+    }}>
+      <Icon size={16} style={{ color: C.muted }} />
+      <p style={{ fontSize: '22px', fontWeight: '600', color: C.text, margin: 0, lineHeight: 1, ...valueStyle }}>
+        {value ?? '—'}
+      </p>
+      <p style={{ fontSize: '12px', color: C.muted, margin: 0 }}>{label}</p>
+    </div>
+  )
+}
 
-function QuestionDetailCard({ q }) {
+// ── Question row (in questions panel) ─────────────────────────────────────
+function QuestionRow({ q, index, onEdit, onDelete, confirmDel, onConfirmDel, onCancelDel }) {
   const [open, setOpen] = useState(false)
-  const typ = getType(q)
+  const typeLabel = q.type === 'truefalse' ? 'T/F'
+    : q.type === 'calculation' ? 'Fill-in' : 'MCQ'
 
   return (
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-medium text-ink leading-relaxed">
-        <MathRenderer text={q.text} />
-      </p>
+    <div style={{
+      border: `1px solid ${C.border}`, borderRadius: '10px',
+      overflow: 'hidden', backgroundColor: C.white,
+    }}>
+      {/* Header row */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: '10px',
+        padding: '14px 16px',
+        backgroundColor: C.white,
+      }}>
+        {/* Q number badge */}
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          minWidth: '28px', height: '20px', padding: '0 6px',
+          backgroundColor: C.bg, borderRadius: '4px',
+          fontSize: '11px', fontWeight: '600', color: C.secondary, flexShrink: 0,
+        }}>
+          Q{index + 1}
+        </span>
 
-      {/* MCQ options */}
-      {typ === 'mcq' && q.options?.length > 0 && (
-        <div className="mt-2 flex flex-col gap-1">
-          {q.options.map((opt, oi) => {
-            const letter   = String.fromCharCode(65 + oi)
-            const isAnswer = opt.trim().charAt(0) === q.answer || letter === q.answer
-            return (
-              <p key={oi} className={cn(
-                'text-xs px-2 py-1 rounded',
-                isAnswer ? 'bg-success-light text-success font-semibold' : 'text-ink-4'
-              )}>
-                <MathRenderer text={opt} /> {isAnswer && '✓'}
-              </p>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Stepwise blank count */}
-      {typ === 'stepwise' && q.steps?.length > 0 && (
-        <p className="text-xs text-ink-4 mt-1">
-          {q.steps.filter((s) => s.is_blank).length} blank{q.steps.filter((s) => s.is_blank).length !== 1 ? 's' : ''} · {q.steps.length} steps
+        {/* Question text */}
+        <p style={{ flex: 1, fontSize: '14px', fontWeight: '500', color: C.text, lineHeight: 1.5, margin: 0 }}>
+          <MathRenderer text={q.text} />
         </p>
-      )}
 
-      {/* Answer pill + hint + explanation toggle */}
-      <div className="flex items-center gap-2 mt-2 flex-wrap">
-        {q.answer && typ !== 'stepwise' && (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-success bg-success-light px-2.5 py-1 rounded-lg border border-success/20">
-            ✓ {q.answer}
-          </span>
-        )}
-        {q.hint?.trim() && (
-          <span className="text-xs text-amber font-medium bg-amber-light px-2 py-0.5 rounded-lg">
-            💡 {q.hint}
-          </span>
-        )}
-        {q.explanation?.trim() && (
-          <button
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-500 transition-colors ml-auto"
-          >
-            {open ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-            {open ? 'Hide explanation' : 'Show explanation'}
-          </button>
-        )}
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+          {confirmDel ? (
+            <>
+              <button onClick={onConfirmDel} style={{ padding: '3px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: '600', backgroundColor: C.dangerBg, color: C.danger, border: 'none', cursor: 'pointer' }}>
+                Delete?
+              </button>
+              <button onClick={onCancelDel} style={{ padding: '3px 6px', borderRadius: '5px', border: `1px solid ${C.border}`, backgroundColor: C.white, color: C.muted, cursor: 'pointer' }}>
+                <X size={10} />
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => onEdit(q)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '5px', border: `1px solid ${C.border}`, backgroundColor: C.white, color: C.secondary, cursor: 'pointer' }}>
+                <Pencil size={12} />
+              </button>
+              <button onClick={() => onDelete(q.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '5px', border: `1px solid ${C.border}`, backgroundColor: C.white, color: C.muted, cursor: 'pointer' }}>
+                <Trash2 size={12} />
+              </button>
+            </>
+          )}
+          {/* Explanation toggle */}
+          {q.explanation && (
+            <button onClick={() => setOpen(!open)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', borderRadius: '5px', border: `1px solid ${C.border}`, backgroundColor: C.white, color: C.secondary, cursor: 'pointer' }}>
+              {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Collapsible explanation */}
-      {open && q.explanation?.trim() && (
-        <div className="mt-3 bg-brand-50 border border-brand-200/70 rounded-xl px-4 py-3">
-          <p className="text-xs font-bold text-brand-600 uppercase tracking-widest mb-2">📖 Explanation</p>
-          <p className="text-sm text-brand-800 leading-relaxed">
+      {/* Explanation */}
+      {open && q.explanation && (
+        <div style={{ padding: '10px 14px 14px', borderTop: `1px solid ${C.border}`, backgroundColor: '#f8fbf9' }}>
+          <p style={{ fontSize: '12px', fontWeight: '600', color: C.muted, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+            Explanation
+          </p>
+          <p style={{ fontSize: '13px', color: C.secondary, lineHeight: 1.6, margin: 0 }}>
             <MathRenderer text={q.explanation} />
           </p>
         </div>
@@ -165,240 +165,115 @@ function QuestionDetailCard({ q }) {
   )
 }
 
-// ── Per-question answer display (inside student rows) — no explanation ─────
-
-function QuestionAnswerCard({ q, index, sa, isCorrect }) {
-  const typ  = getType(q)
-  const text = q?.text || q?.question_text || ''
-
-  return (
-    <div className={cn(
-      'rounded-2xl border-2 overflow-hidden bg-white',
-      isCorrect ? 'border-success/25' : 'border-danger/25'
-    )}>
-      {/* Header */}
-      <div className={cn(
-        'flex items-start gap-3 px-4 py-3',
-        isCorrect ? 'bg-success-light/30' : 'bg-danger-light/30'
-      )}>
-        <div className={cn(
-          'w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-white',
-          isCorrect ? 'bg-success' : 'bg-danger'
-        )}>
-          {isCorrect ? <Check size={12} strokeWidth={3} /> : <X size={12} strokeWidth={3} />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <span className="text-xs font-bold text-ink-4 mr-2">Q{index + 1}</span>
-          <span className={cn(
-            'text-xs font-semibold px-1.5 py-0.5 rounded mr-2',
-            typ === 'stepwise'    ? 'bg-purple-100 text-purple-700' :
-            typ === 'calculation' ? 'bg-brand-50 text-brand-600' :
-            typ === 'true_false'  ? 'bg-amber/10 text-amber' : 'bg-surface text-ink-4'
-          )}>
-            {typ === 'stepwise' ? 'Stepwise' : typ === 'calculation' ? 'Fill-in' : typ === 'true_false' ? 'True/False' : 'MCQ'}
-          </span>
-          <span className="text-sm font-semibold text-ink leading-relaxed">
-            <MathRenderer text={text} />
-          </span>
-        </div>
-      </div>
-
-      {/* Answer body — student answer only, no explanation */}
-      <div className="px-4 py-3">
-
-        {/* MCQ */}
-        {typ === 'mcq' && q.options?.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {q.options.map((opt, oi) => {
-              const letter    = String.fromCharCode(65 + oi)
-              const optLetter = opt.trim().charAt(0)
-              const isAns     = optLetter === q.answer || letter === q.answer
-              const isStu     = sa ? (optLetter === String(sa).trim() || letter === String(sa).trim()) : false
-              let rowCls = 'border-border bg-white text-ink-4'
-              let label  = null
-              if (isAns && isStu)  { rowCls = 'border-success bg-success-light text-success font-semibold'; label = '✓ Correct' }
-              else if (isAns)      { rowCls = 'border-success/60 bg-success-light/60 text-success'; label = '✓ Correct answer' }
-              else if (isStu)      { rowCls = 'border-danger bg-danger-light text-danger font-semibold'; label = '✗ Student chose' }
-              return (
-                <div key={oi} className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-sm', rowCls)}>
-                  <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
-                    isAns ? 'bg-success text-white' : isStu ? 'bg-danger text-white' : 'bg-surface text-ink-4')}>
-                    {letter}
-                  </span>
-                  <span className="flex-1 leading-relaxed"><MathRenderer text={opt.replace(/^[A-D]\.\s*/, '')} /></span>
-                  {label && <span className="text-xs font-bold ml-auto flex-shrink-0 whitespace-nowrap">{label}</span>}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* True / False */}
-        {typ === 'true_false' && (
-          <div className="flex gap-3">
-            {['True', 'False'].map((val) => {
-              const isAns = /^true/i.test(q.answer || '') ? val === 'True' : val === 'False'
-              const isStu = sa ? (/^true/i.test(String(sa)) ? val === 'True' : val === 'False') : false
-              return (
-                <div key={val} className={cn(
-                  'flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-sm font-semibold',
-                  isAns && isStu  ? 'border-success bg-success-light text-success' :
-                  isAns && !isStu ? 'border-success/40 bg-success-light/50 text-success' :
-                  isStu && !isAns ? 'border-danger bg-danger-light text-danger' : 'border-border text-ink-4'
-                )}>
-                  <span className="text-lg">{val === 'True' ? '✅' : '❌'}</span>
-                  <span>{val}</span>
-                  {isAns && isStu  && <span className="text-xs font-bold">✓ Correct</span>}
-                  {isStu && !isAns && <span className="text-xs font-bold">✗ Student</span>}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Fill-in / Calculation */}
-        {typ === 'calculation' && (
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-semibold text-ink-4 uppercase tracking-wide">Student's answer</p>
-            {q.answer_template?.structure?.length > 0 ? (
-              <div className="flex flex-wrap gap-3">
-                {q.answer_template.structure.map((item) => {
-                  const val      = (typeof sa === 'object' && sa) ? (sa[item.id] ?? '') : ''
-                  const accepted = (item.accepted || [item.answer]).map((a) => String(a).trim().toLowerCase())
-                  const ok       = accepted.includes(val.trim().toLowerCase())
-                  return (
-                    <div key={item.id} className="flex flex-col items-center gap-1">
-                      {item.label && <span className="text-xs text-ink-4">{item.label}</span>}
-                      <div className={cn('px-4 py-2 rounded-xl border-2 text-sm font-bold min-w-[52px] text-center',
-                        ok ? 'border-success/40 bg-success-light text-success' : 'border-danger/40 bg-danger-light text-danger')}>
-                        {val || '—'}
-                      </div>
-                      {!ok && val && <span className="text-xs text-ink-4">expected: <strong>{item.answer}</strong></span>}
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-ink-4 italic">
-                {sa ? (typeof sa === 'object' ? JSON.stringify(sa) : String(sa)) : 'No answer recorded'}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Stepwise */}
-        {typ === 'stepwise' && (
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-semibold text-ink-4 uppercase tracking-wide">Student's filled blanks</p>
-            {(q.steps ?? []).filter((s) => s.is_blank).length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {(q.steps ?? []).filter((s) => s.is_blank).map((step, si) => {
-                  const filled  = (typeof sa === 'object' && sa) ? (sa[step.id] ?? '') : ''
-                  const correct = filled.trim().toLowerCase() === (step.answer ?? '').trim().toLowerCase()
-                  return (
-                    <div key={step.id} className={cn(
-                      'flex items-start gap-3 px-3 py-2.5 rounded-xl border-2 text-sm',
-                      correct ? 'border-success/40 bg-success-light/50 text-success' : 'border-danger/40 bg-danger-light/50 text-danger'
-                    )}>
-                      <span className="text-xs font-bold flex-shrink-0 mt-0.5 w-12">Step {si + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-ink-4 mb-1">{step.text.replace('___', `[${filled || '—'}]`)}</p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={cn('px-2 py-0.5 rounded-lg text-xs font-bold border',
-                            correct ? 'border-success/40 bg-success-light text-success' : 'border-danger/40 bg-danger-light text-danger')}>
-                            {filled || '—'}
-                          </span>
-                          {!correct && (
-                            <span className="text-xs text-ink-4">expected: <strong className="text-success">{step.answer}</strong></span>
-                          )}
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold flex-shrink-0">{correct ? '✓' : '✗'}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-ink-4 italic">No blanks recorded.</p>
-            )}
-          </div>
-        )}
-
-        {/* MCQ fallback — no options stored */}
-        {typ === 'mcq' && (!q.options || q.options.length === 0) && (
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-ink-4">Student answered</span>
-              <span className={cn('text-sm font-bold px-3 py-1.5 rounded-xl border-2',
-                isCorrect ? 'border-success/40 bg-success-light text-success' : 'border-danger/40 bg-danger-light text-danger')}>
-                {sa ? String(sa) : '—'}
-              </span>
-            </div>
-            {!isCorrect && q.answer && (
-              <div className="flex flex-col gap-0.5">
-                <span className="text-xs text-ink-4">Correct answer</span>
-                <span className="text-sm font-bold px-3 py-1.5 rounded-xl border-2 border-success/40 bg-success-light text-success">
-                  {q.answer}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-      </div>
-    </div>
-  )
-}
-
 // ── Submission row ─────────────────────────────────────────────────────────
-
-function SubmissionRow({ submission, questions, defaultOpen = false }) {
+function SubmissionRow({ sub, questions, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen)
-
-  const answers = submission.answers ?? {}
+  const answers = sub.answers ?? {}
   const correct = questions.filter((q, i) => scoreOne(q, resolveAnswer(answers, q, i))).length
-  const pct     = submission.score ?? Math.round((correct / Math.max(questions.length, 1)) * 100)
-  const date    = new Date(submission.completed_at).toLocaleDateString('en-GB', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  const pct     = sub.score ?? Math.round((correct / Math.max(questions.length, 1)) * 100)
+  const initial = getInitial(sub.student_name)
 
   return (
-    <div className={cn('border-b border-border last:border-none transition-colors', open ? 'bg-surface/30' : 'hover:bg-surface/20')}>
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-4 px-5 py-4 text-left">
-        <Avatar name={submission.student_name} size="sm" />
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-ink text-sm truncate">{submission.student_name}</p>
-          <p className="text-xs text-ink-4 mt-0.5">{date}</p>
+    <div style={{
+      border: `1px solid ${C.border}`,
+      borderRadius: '10px', overflow: 'hidden',
+      backgroundColor: C.white,
+    }}>
+      {/* Header */}
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+          padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        {/* Avatar */}
+        <div style={{
+          width: '32px', height: '32px', borderRadius: '50%',
+          backgroundColor: C.bg, border: `1px solid ${C.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '12px', fontWeight: '600', color: C.secondary, flexShrink: 0,
+        }}>
+          {initial}
         </div>
-        <div className={cn('px-3 py-1.5 rounded-xl text-sm font-bold flex-shrink-0', scoreBg(pct))}>{pct}%</div>
-        <span className="text-xs text-ink-4 hidden sm:block flex-shrink-0">{correct}/{questions.length} correct</span>
-        {submission.tab_violations > 0 && (
-          <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-amber bg-amber-light px-2 py-1 rounded-full flex-shrink-0">
-            <AlertTriangle size={10} />
-            {submission.tab_violations} tab switch{submission.tab_violations !== 1 ? 'es' : ''}
-          </span>
-        )}
-        <ChevronDown size={16} className={cn('text-ink-4 flex-shrink-0 transition-transform duration-200', open && 'rotate-180')} />
+
+        {/* Name + date */}
+        <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+          <p style={{ fontSize: '14px', fontWeight: '600', color: C.text, margin: 0 }}>
+            {sub.student_name}
+          </p>
+          <p style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>
+            {relDate(sub.completed_at)}
+          </p>
+        </div>
+
+        {/* Score chip */}
+        <span style={{
+          padding: '3px 10px', borderRadius: '20px', fontSize: '13px', fontWeight: '600',
+          flexShrink: 0, ...scoreBg(pct),
+        }}>
+          {pct}%
+        </span>
+
+        {/* Correct count */}
+        <span style={{ fontSize: '12px', color: C.muted, flexShrink: 0, marginRight: '4px' }}
+          className="hidden sm:block">
+          {correct}/{questions.length}
+        </span>
+
+        <ChevronDown size={14} style={{ color: C.muted, flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
 
+      {/* Expanded: score bar + per-question answers */}
       {open && (
-        <div className="px-5 pb-5 flex flex-col gap-3">
-          <div className="flex items-center gap-3 py-2 px-4 bg-white rounded-xl border border-border">
-            <div className="flex-1 h-2.5 bg-border rounded-full overflow-hidden">
-              <div className={cn('h-full rounded-full transition-all duration-700',
-                pct >= 75 ? 'bg-success' : pct >= 50 ? 'bg-amber' : 'bg-danger')}
-                style={{ width: `${pct}%` }}
-              />
+        <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${C.border}` }}>
+          {/* Score bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 0' }}>
+            <div style={{ flex: 1, height: '6px', backgroundColor: C.bg, borderRadius: '99px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, backgroundColor: scoreColor(pct), borderRadius: '99px', transition: 'width 0.5s' }} />
             </div>
-            <span className={cn('text-sm font-bold flex-shrink-0', scoreColor(pct))}>{pct}%</span>
-            <span className="text-xs text-ink-4 flex-shrink-0">{correct} of {questions.length} correct</span>
+            <span style={{ fontSize: '13px', fontWeight: '600', color: scoreColor(pct), flexShrink: 0 }}>
+              {pct}% · {correct}/{questions.length} correct
+            </span>
           </div>
-          {questions.map((q, i) => {
-            const sa        = resolveAnswer(answers, q, i)
-            const isCorrect = scoreOne(q, sa)
-            return <QuestionAnswerCard key={q.id ?? i} q={q} index={i} sa={sa} isCorrect={isCorrect} />
-          })}
+
+          {/* Per-question answer list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {questions.map((q, i) => {
+              const sa      = resolveAnswer(answers, q, i)
+              const correct = scoreOne(q, sa)
+              const qText   = (q.text || '').slice(0, 80) + ((q.text || '').length > 80 ? '…' : '')
+              return (
+                <div key={q.id ?? i} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '8px',
+                  padding: '8px 12px', borderRadius: '8px',
+                  backgroundColor: correct ? '#f0fdf4' : '#fff5f5',
+                  border: `1px solid ${correct ? '#bbf7d0' : '#fecaca'}`,
+                }}>
+                  <span style={{
+                    width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '10px', fontWeight: '700',
+                    backgroundColor: correct ? C.green : C.danger, color: '#fff',
+                    marginTop: '1px',
+                  }}>
+                    {correct ? '✓' : '✗'}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '12px', color: C.secondary, margin: 0, lineHeight: 1.4 }}>
+                      Q{i+1}: {qText}
+                    </p>
+                    <p style={{ fontSize: '12px', margin: '2px 0 0', color: correct ? C.green : C.danger }}>
+                      Answered: {sa ? String(sa).slice(0, 60) : '—'}
+                      {!correct && q.answer && (
+                        <span style={{ color: C.muted }}> · Correct: {q.answer}</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -406,24 +281,23 @@ function SubmissionRow({ submission, questions, defaultOpen = false }) {
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
-
 export default function AssessmentDetailPage({ params }) {
   const { id }    = use(params)
   const router    = useRouter()
   const { toast } = useToast()
 
-  const [assessment,    setAssessment]   = useState(null)
-  const [loading,       setLoading]      = useState(true)
-  const [deleting,      setDeleting]     = useState(false)
-  const [editingQ,      setEditingQ]     = useState(null)
-  const [copied,        setCopied]       = useState(false)
-  const [shareUrl,      setShareUrl]     = useState('')
-  const [qOpen,         setQOpen]        = useState(true)
-  const [editTitle,     setEditTitle]    = useState(false)
-  const [titleVal,      setTitleVal]     = useState('')
-  const [savingTitle,   setSavingTitle]  = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(null)
-  const [allExpanded,   setAllExpanded]  = useState(false)
+  const [assessment,   setAssessment]   = useState(null)
+  const [loading,      setLoading]      = useState(true)
+  const [deleting,     setDeleting]     = useState(false)
+  const [editingQ,     setEditingQ]     = useState(null)
+  const [copied,       setCopied]       = useState(false)
+  const [shareUrl,     setShareUrl]     = useState('')
+  const [editTitle,    setEditTitle]    = useState(false)
+  const [titleVal,     setTitleVal]     = useState('')
+  const [savingTitle,  setSavingTitle]  = useState(false)
+  const [confirmDel,   setConfirmDel]   = useState(null)   // null | 'assessment' | { qid }
+  const [allExpanded,  setAllExpanded]  = useState(false)
+  const [activeTab,    setActiveTab]    = useState('submissions')  // submissions | questions
 
   const loadAssessment = useCallback(async () => {
     const supabase = createClient()
@@ -463,32 +337,28 @@ export default function AssessmentDetailPage({ params }) {
 
     const supabase = createClient()
     const channel  = supabase
-      .channel(`assessment-detail-${id}`)
-      .on('postgres_changes', {
-        event: '*', schema: 'public', table: 'submissions',
-        filter: `assessment_id=eq.${id}`,
-      }, () => loadAssessment())
+      .channel(`detail-${id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions', filter: `assessment_id=eq.${id}` }, loadAssessment)
       .subscribe()
-
     return () => supabase.removeChannel(channel)
   }, [id, loadAssessment])
 
   const handleDeleteAssessment = async () => {
-    if (confirmDelete !== 'assessment') { setConfirmDelete('assessment'); return }
-    setConfirmDelete(null)
-    setDeleting(true)
+    if (confirmDel !== 'assessment') { setConfirmDel('assessment'); return }
+    setConfirmDel(null); setDeleting(true)
     const supabase = createClient()
     const { error } = await supabase.from('assessments').delete().eq('id', id)
     if (error) { toast({ message: 'Failed to delete.', type: 'error' }); setDeleting(false) }
-    else { toast({ message: 'Assessment deleted.', type: 'success' }); router.push('/dashboard/assessments') }
+    else { toast({ message: 'Deleted.', type: 'success' }); router.push('/dashboard/assessments') }
   }
 
   const handleDeleteQuestion = async (qid) => {
-    if (!confirmDelete || confirmDelete?.qid !== qid) { setConfirmDelete({ qid }); return }
-    setConfirmDelete(null)
+    if (!confirmDel || confirmDel?.qid !== qid) { setConfirmDel({ qid }); return }
+    setConfirmDel(null)
     const supabase = createClient()
-    const { error } = await supabase.from('questions').delete().eq('id', qid)
-    if (!error) { toast({ message: 'Question deleted.', type: 'success' }); loadAssessment() }
+    await supabase.from('questions').delete().eq('id', qid)
+    toast({ message: 'Question removed.', type: 'success' })
+    loadAssessment()
   }
 
   const handleSaveTitle = async () => {
@@ -496,202 +366,232 @@ export default function AssessmentDetailPage({ params }) {
     setSavingTitle(true)
     const supabase = createClient()
     const { error } = await supabase.from('assessments').update({ title: titleVal.trim() }).eq('id', id)
-    if (error) { toast({ message: 'Failed to update title.', type: 'error' }) }
-    else { toast({ message: 'Title updated!', type: 'success' }); setEditTitle(false); loadAssessment() }
+    if (!error) { setEditTitle(false); loadAssessment(); toast({ message: 'Title updated.', type: 'success' }) }
     setSavingTitle(false)
   }
 
   const copyLink = () => {
     navigator.clipboard.writeText(shareUrl)
     setCopied(true)
-    toast({ message: 'Link copied!', type: 'success' })
     setTimeout(() => setCopied(false), 2500)
   }
 
-  const openPreview = () => window.open(`/t/${assessment.slug}?preview=1`, '_blank')
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-3">
-          <Spinner className="w-8 h-8" />
-          <p className="text-sm text-ink-4">Loading assessment…</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: '28px', height: '28px', border: `2px solid ${C.border}`, borderTopColor: C.brand, borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 12px' }} />
+          <p style={{ fontSize: '13px', color: C.muted }}>Loading…</p>
         </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     )
   }
 
   const scores   = assessment.submissions.filter((s) => s.score !== null).map((s) => s.score)
   const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+  const subject  = (assessment.subject ?? '').replace(/_/g, ' ')
+  const isActive = assessment.is_active
 
   return (
     <>
-      <div className="flex flex-col gap-6 max-w-4xl mx-auto">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-        <Link href="/dashboard/assessments"
-          className="inline-flex items-center gap-2 text-sm text-ink-3 hover:text-ink transition-colors self-start">
-          <ArrowLeft size={15} /> Back to Assessments
+        {/* ── Back ── */}
+        <Link href="/dashboard/assessments" style={{
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          fontSize: '13px', color: C.secondary, textDecoration: 'none',
+          alignSelf: 'flex-start',
+        }}>
+          <ArrowLeft size={14} /> Assessments
         </Link>
 
-        {/* Header card */}
-        <div className="bg-white border border-border rounded-2xl p-6 shadow-card">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-1">
-                {assessment.subject} · {assessment.class_level?.toUpperCase()}
-                {assessment.assessment_type && ` · ${assessment.assessment_type}`}
-              </p>
-              {editTitle ? (
-                <div className="flex items-center gap-2">
-                  <input type="text" value={titleVal} onChange={(e) => setTitleVal(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle() }}
-                    className="flex-1 font-display text-2xl font-bold text-ink border-b-2 border-brand-500 outline-none bg-transparent"
-                    autoFocus />
-                  <button onClick={handleSaveTitle} disabled={savingTitle} className="text-success hover:text-success/80"><Check size={18} /></button>
-                  <button onClick={() => { setEditTitle(false); setTitleVal(assessment.title) }} className="text-ink-4 hover:text-danger"><X size={18} /></button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <h1 className="font-display text-2xl font-bold text-ink">{assessment.title}</h1>
-                  <button onClick={() => setEditTitle(true)} className="text-ink-4 hover:text-brand-600 transition-colors" title="Edit title">
-                    <Pencil size={15} />
-                  </button>
-                </div>
-              )}
-              {assessment.topic && <p className="text-sm text-ink-3 mt-1">{assessment.topic}</p>}
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={openPreview}
-                className="inline-flex items-center gap-2 bg-surface border border-border text-ink text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-border transition-colors">
-                <Eye size={14} /> Preview
-              </button>
-              <a href={`/t/${assessment.slug}`} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-brand-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-brand-700 transition-colors">
-                Share Link
-              </a>
-              <button onClick={handleDeleteAssessment} disabled={deleting}
-                className={cn('inline-flex items-center gap-2 border text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50',
-                  confirmDelete === 'assessment' ? 'bg-danger text-white border-danger' : 'bg-white border-danger/30 text-danger hover:bg-danger-light')}>
-                <Trash2 size={14} />
-                {deleting ? 'Deleting…' : confirmDelete === 'assessment' ? 'Confirm delete?' : 'Delete'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-border">
-            {[
-              { icon: BookOpen,  label: 'Questions', value: assessment.questions.length },
-              { icon: Users,     label: 'Responses', value: assessment.submissions.length },
-              { icon: BarChart2, label: 'Avg Score',  value: avgScore !== null ? `${avgScore}%` : '—' },
-            ].map((s, i) => (
-              <div key={i} className="text-center">
-                <div className="flex items-center justify-center gap-1.5 text-brand-500 mb-1">
-                  <s.icon size={14} />
-                  <span className="text-xs font-semibold uppercase tracking-wide">{s.label}</span>
-                </div>
-                <p className={cn('font-display text-3xl font-bold',
-                  s.label === 'Avg Score' && avgScore !== null ? scoreColor(avgScore) : 'text-ink')}>
-                  {s.value}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 -mt-3">
-          <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-          <p className="text-xs text-ink-4">Live — updates automatically when students submit</p>
-        </div>
-
-        {/* Share link */}
-        <div className="bg-white border border-border rounded-2xl p-5 shadow-card flex flex-col gap-3">
-          <p className="text-sm font-semibold text-ink">Share Link</p>
-          <div className="flex items-center gap-2 bg-surface rounded-xl px-4 py-3 border border-border">
-            <span className="flex-1 text-sm text-brand-600 font-medium truncate">{shareUrl}</span>
-            <button onClick={copyLink}
-              className="flex items-center gap-1.5 bg-brand-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors flex-shrink-0">
-              {copied ? <CheckCheck size={13} /> : <Copy size={13} />}
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-          <p className="text-xs text-ink-4">Edits to questions reflect on the live link immediately.</p>
-        </div>
-
-        {/* Questions list */}
+        {/* ── Title + status row ── */}
         <div>
-          <button onClick={() => setQOpen(!qOpen)} className="w-full flex items-center justify-between mb-3">
-            <h2 className="font-display text-lg font-bold text-ink">Questions ({assessment.questions.length})</h2>
-            {qOpen ? <ChevronUp size={16} className="text-ink-4" /> : <ChevronDown size={16} className="text-ink-4" />}
-          </button>
+          {/* Subject + status chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            {subject && (
+              <span style={{ fontSize: '12px', color: C.secondary, backgroundColor: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '3px 10px' }}>
+                {subject}
+              </span>
+            )}
+            <span style={{
+              fontSize: '12px', borderRadius: '20px', padding: '3px 10px', fontWeight: '500',
+              ...(isActive ? { backgroundColor: C.greenBg, color: C.green } : { backgroundColor: '#f3f4f6', color: '#6b7280' })
+            }}>
+              {isActive ? 'Active' : 'Inactive'}
+            </span>
+            {assessment.class_level && (
+              <span style={{ fontSize: '12px', color: C.muted }}>{assessment.class_level}</span>
+            )}
+          </div>
 
-          {qOpen && (
-            <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
-              {assessment.questions.length === 0 ? (
-                <div className="p-8 text-center text-sm text-ink-4">No questions yet.</div>
-              ) : (
-                assessment.questions.map((q, i) => (
-                  <div key={q.id}
-                    className="flex items-start gap-4 px-5 py-4 border-b border-border last:border-none hover:bg-surface/20 transition-colors">
-                    <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                      {i + 1}
-                    </div>
-                    <QuestionDetailCard q={q} />
-                    <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
-                      <button onClick={() => setEditingQ(q)}
-                        className="w-7 h-7 rounded-lg bg-surface border border-border flex items-center justify-center hover:border-brand-400 hover:text-brand-600 transition-colors"
-                        title="Edit">
-                        <Pencil size={13} />
-                      </button>
-                      <button onClick={() => handleDeleteQuestion(q.id)}
-                        className={cn('w-7 h-7 rounded-lg border flex items-center justify-center transition-colors',
-                          confirmDelete?.qid === q.id ? 'bg-danger border-danger text-white' : 'bg-surface border-border hover:border-danger hover:text-danger')}
-                        title={confirmDelete?.qid === q.id ? 'Confirm?' : 'Delete'}>
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+          {/* Editable title */}
+          {editTitle ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                value={titleVal}
+                onChange={(e) => setTitleVal(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTitle() }}
+                autoFocus
+                style={{
+                  flex: 1, fontSize: '22px', fontWeight: '600', color: C.text,
+                  border: 'none', borderBottom: `2px solid ${C.brand}`,
+                  outline: 'none', padding: '2px 0', background: 'transparent',
+                }}
+              />
+              <button onClick={handleSaveTitle} disabled={savingTitle} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green }}>
+                <Check size={18} />
+              </button>
+              <button onClick={() => setEditTitle(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted }}>
+                <X size={18} />
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 style={{ fontSize: '22px', fontWeight: '600', color: C.text, margin: 0, lineHeight: 1.3 }}>
+                {assessment.title}
+              </h1>
+              <button onClick={() => setEditTitle(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, padding: '2px' }}>
+                <Pencil size={14} />
+              </button>
             </div>
           )}
         </div>
 
-        {/* Submissions */}
-        <div>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-            <h2 className="font-display text-lg font-bold text-ink">Submissions ({assessment.submissions.length})</h2>
-            {assessment.submissions.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button onClick={() => setAllExpanded(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-3 hover:text-ink border border-border bg-white px-3 py-2 rounded-xl transition-colors">
-                  <ChevronsUpDown size={13} /> Expand All
-                </button>
-                <button onClick={() => setAllExpanded(false)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-3 hover:text-ink border border-border bg-white px-3 py-2 rounded-xl transition-colors">
-                  <ChevronsDownUp size={13} /> Collapse All
-                </button>
-              </div>
-            )}
-          </div>
+        {/* ── Stats row ── */}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <StatPill icon={ClipboardList} label="Questions"  value={assessment.questions.length} />
+          <StatPill icon={Users}         label="Responses"  value={assessment.submissions.length} />
+          <StatPill icon={BarChart3}     label="Avg Score"  value={avgScore !== null ? `${avgScore}%` : '—'}
+            valueStyle={avgScore !== null ? { color: scoreColor(avgScore) } : {}} />
+        </div>
 
-          {assessment.submissions.length === 0 ? (
-            <div className="bg-white border border-dashed border-border rounded-2xl p-8 text-center">
-              <p className="text-3xl mb-2">📭</p>
-              <p className="text-sm font-medium text-ink mb-1">No submissions yet</p>
-              <p className="text-sm text-ink-3">Share the link — this page updates automatically when students submit</p>
+        {/* ── Share link bar ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          backgroundColor: C.white, border: `1px solid ${C.border}`, borderRadius: '10px',
+          padding: '10px 14px',
+        }}>
+          <Link2 size={14} style={{ color: C.muted, flexShrink: 0 }} />
+          <span style={{
+            flex: 1, fontSize: '13px', color: C.brand, fontFamily: 'monospace',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {shareUrl}
+          </span>
+          <button onClick={copyLink} style={{
+            display: 'flex', alignItems: 'center', gap: '5px',
+            padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '600',
+            backgroundColor: copied ? C.greenBg : C.brand,
+            color: copied ? C.green : '#fff',
+            border: 'none', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s',
+          }}>
+            {copied ? <><CheckCheck size={12} /> Copied</> : <><Copy size={12} /> Copy link</>}
+          </button>
+          <a href={`/t/${assessment.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '5px',
+              padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '600',
+              border: `1px solid ${C.border}`, color: C.secondary, textDecoration: 'none',
+              backgroundColor: C.white, flexShrink: 0,
+            }}>
+            <Eye size={12} /> Preview
+          </a>
+        </div>
+
+        {/* ── Tabs: Submissions / Questions ── */}
+        <div style={{ display: 'flex', gap: '0', borderBottom: `1px solid ${C.border}` }}>
+          {[
+            { id: 'submissions', label: `Submissions (${assessment.submissions.length})` },
+            { id: 'questions',   label: `Questions (${assessment.questions.length})` },
+          ].map((t) => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              padding: '10px 16px', fontSize: '14px', fontWeight: activeTab === t.id ? '600' : '400',
+              color: activeTab === t.id ? C.brand : C.secondary,
+              background: 'none', border: 'none', cursor: 'pointer',
+              borderBottom: `2px solid ${activeTab === t.id ? C.brand : 'transparent'}`,
+              marginBottom: '-1px', transition: 'all 0.12s',
+            }}>
+              {t.label}
+            </button>
+          ))}
+
+          {/* Expand/collapse all — submissions tab only */}
+          {activeTab === 'submissions' && assessment.submissions.length > 0 && (
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center', paddingRight: '4px' }}>
+              <button onClick={() => setAllExpanded(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, padding: '4px' }} title="Expand all">
+                <ChevronsUpDown size={15} />
+              </button>
+              <button onClick={() => setAllExpanded(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.muted, padding: '4px' }} title="Collapse all">
+                <ChevronsDownUp size={15} />
+              </button>
             </div>
-          ) : (
-            <div className="bg-white border border-border rounded-2xl overflow-hidden shadow-card">
-              {assessment.submissions.map((sub) => (
+          )}
+        </div>
+
+        {/* ── Submissions tab ── */}
+        {activeTab === 'submissions' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {assessment.submissions.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '52px 24px', backgroundColor: '#f9fbf9', border: `1px dashed ${C.borderHov}`, borderRadius: '14px' }}>
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>📭</div>
+                <p style={{ fontSize: '15px', fontWeight: '600', color: C.text, margin: '0 0 6px' }}>No submissions yet</p>
+                <p style={{ fontSize: '13px', color: C.muted }}>Share the link — this page updates automatically when students submit</p>
+              </div>
+            ) : (
+              assessment.submissions.map((sub) => (
                 <SubmissionRow
                   key={`${sub.id}-${allExpanded}`}
-                  submission={sub}
+                  sub={sub}
                   questions={assessment.questions}
                   defaultOpen={allExpanded}
                 />
-              ))}
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── Questions tab ── */}
+        {activeTab === 'questions' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {assessment.questions.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: C.muted }}>No questions.</div>
+            ) : (
+              assessment.questions.map((q, i) => (
+                <QuestionRow
+                  key={q.id}
+                  q={q} index={i}
+                  onEdit={(q) => setEditingQ(q)}
+                  onDelete={handleDeleteQuestion}
+                  confirmDel={confirmDel?.qid === q.id}
+                  onConfirmDel={() => handleDeleteQuestion(q.id)}
+                  onCancelDel={() => setConfirmDel(null)}
+                />
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── Danger zone: delete assessment ── */}
+        <div style={{ marginTop: '16px', paddingTop: '20px', borderTop: `1px solid ${C.border}` }}>
+          {confirmDel === 'assessment' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <p style={{ fontSize: '13px', color: C.danger, margin: 0 }}>Delete this assessment and all its data?</p>
+              <button onClick={handleDeleteAssessment} disabled={deleting}
+                style={{ padding: '6px 14px', borderRadius: '6px', fontSize: '13px', fontWeight: '600', backgroundColor: C.danger, color: '#fff', border: 'none', cursor: 'pointer' }}>
+                {deleting ? 'Deleting…' : 'Yes, delete'}
+              </button>
+              <button onClick={() => setConfirmDel(null)}
+                style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '13px', border: `1px solid ${C.border}`, backgroundColor: C.white, color: C.secondary, cursor: 'pointer' }}>
+                Cancel
+              </button>
             </div>
+          ) : (
+            <button onClick={handleDeleteAssessment}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: C.muted, background: 'none', border: 'none', cursor: 'pointer' }}>
+              <Trash2 size={13} /> Delete this assessment
+            </button>
           )}
         </div>
 
@@ -701,11 +601,7 @@ export default function AssessmentDetailPage({ params }) {
         <EditQuestionModal
           question={editingQ}
           onClose={() => setEditingQ(null)}
-          onSaved={() => {
-            setEditingQ(null)
-            loadAssessment()
-            toast({ message: 'Question updated — live link reflects change immediately.', type: 'success' })
-          }}
+          onSaved={() => { setEditingQ(null); loadAssessment() }}
         />
       )}
     </>
