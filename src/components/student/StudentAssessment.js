@@ -890,19 +890,39 @@ export default function StudentAssessment({ assessment }) {
       answersById[questions[i].id] = (val !== undefined && val !== null) ? val : ''
     }
 
-    fetch('/api/submit', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        assessmentId:  assessment.id,
-        studentName,
-        answers:       answersById,
-        score,
-        total:         questions.length,
-        sessionKey:    sessionKey.current,
-        timeTakenSecs: timeTakenSecs ?? null,
-      }),
-    }).catch(console.error)
+    // Await the DB write — never show results until save is confirmed
+    let submissionId = null
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch('/api/submit', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assessmentId:  assessment.id,
+            studentName,
+            answers:       answersById,
+            score,
+            total:         questions.length,
+            sessionKey:    sessionKey.current,
+            timeTakenSecs: timeTakenSecs ?? null,
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success) { submissionId = data.submissionId ?? true; break }
+          if (res.status < 500) { console.error('[submit]', data.error); break }
+        }
+      } catch (e) {
+        console.error('[submit] attempt', attempt + 1, e)
+      }
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)))
+    }
+
+    // If all attempts failed — show retry screen instead of results
+    if (!submissionId) {
+      setPhase('submit_error')
+      return
+    }
 
     saveToHistory({
       slug:        assessment.slug,
@@ -937,5 +957,30 @@ export default function StudentAssessment({ assessment }) {
   if (phase === 'test')   return <QuestionScreen assessment={assessment} studentName={studentName} answers={answers} setAnswers={setAnswers} onSubmit={handleSubmit} timedOut={timedOut} />
   if (phase === 'result' && result) return <ResultScreen score={result.score} correct={result.correct} total={result.total} studentName={studentName} onReview={() => setPhase('review')} />
   if (phase === 'review') return <ReviewAllScreen assessment={assessment} answers={answers} onDone={() => setPhase('result')} />
+
+  // Submission save failed after all retries
+  if (phase === 'submit_error') return (
+    <div className="min-h-screen bg-[#f7f3ee] flex items-center justify-center px-4">
+      <div className="bg-white rounded-2xl border border-border p-8 max-w-sm w-full text-center shadow-sm">
+        <div className="text-4xl mb-4">⚠️</div>
+        <h2 className="font-display text-xl font-bold text-ink mb-2">Submission failed</h2>
+        <p className="text-sm text-ink-3 leading-relaxed mb-6">
+          Your answers were saved locally but couldn't reach the server. Please check your connection and try again — your answers are preserved.
+        </p>
+        <button
+          onClick={() => {
+            setPhase('test')
+            // Re-trigger submit with the same answers
+            handleSubmit(answers, null)
+          }}
+          className="w-full py-3 rounded-xl bg-brand-800 text-white text-sm font-bold hover:bg-brand-700 transition-colors"
+        >
+          Try submitting again
+        </button>
+        <p className="text-xs text-ink-4 mt-3">Your answers are safe — nothing will be lost</p>
+      </div>
+    </div>
+  )
+
   return null
 }

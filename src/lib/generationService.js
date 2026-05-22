@@ -180,6 +180,9 @@ QUESTION RULES:
 - Each question must have exactly 4 options labelled A, B, C, D
 - Only one option is correct
 - correct_answer must be exactly one of: A, B, C, D
+- MATH FORMATTING: wrap every mathematical expression in $...$
+  Examples: $\\frac{10}{x-5}$ · $4 \\times x$ · $x^{2}$ · $\\sqrt{16}$
+  Any symbol, equation, fraction, power, or root must be inside $...$
 - Questions must be clear, unambiguous, and appropriate for the level
 - Always include a one-sentence hint (gives a clue without revealing the answer)
 ${explSpec}
@@ -219,6 +222,7 @@ ${contextBlock}
 QUESTION RULES:
 - Each question must be a clear, factual statement
 - correct_answer must be exactly "True" or "False" (capitalised, nothing else)
+- MATH FORMATTING: wrap every mathematical expression in $...$
 - Avoid trick questions, double negatives, and ambiguous phrasing
 - Always include a one-sentence hint
 ${explSpec}
@@ -255,7 +259,8 @@ Generate exactly ${count} calculation question${count > 1 ? 's' : ''} about "${t
 
 ${diffBlock}
 ${contextBlock}
-These are fill-in-the-answer questions — NOT multiple choice. Students type answers into structured boxes.
+These are fill-in-the-answer questions — NOT multiple choice.
+MATH FORMATTING: wrap ALL mathematical expressions in $...$. This includes fractions, powers, roots, and any LaTeX. Students type answers into structured boxes.
 
 ANSWER TEMPLATE TYPES — choose the one that best fits each answer:
 - "number"        → single whole number answer
