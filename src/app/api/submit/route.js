@@ -98,14 +98,14 @@ export async function POST(request) {
       ? Math.round((correctCount / questions.length) * 100 * 10) / 10
       : 0
 
-    // Build insert — ONLY columns that always exist, no ip_address
+    // Build insert — column names match actual schema exactly
     const insertRow = {
-      assessment_id:   assessmentId,
-      student_name:    studentName.trim(),
-      answers:         scoredAnswers,
+      assessment_id: assessmentId,
+      student_name:  studentName.trim(),
+      answers:       Object.keys(scoredAnswers).length > 0 ? scoredAnswers : {}, // NOT NULL
       score,
-      total_questions: questions.length,
-      completed_at:    new Date().toISOString(),
+      total:         questions.length,   // actual column name is 'total' not 'total_questions'
+      completed_at:  new Date().toISOString(),
     }
     // Only add optional fields if they have values
     if (studentData && Object.keys(studentData).length > 0) insertRow.student_data = studentData
@@ -114,7 +114,7 @@ export async function POST(request) {
     const { data: sub, error: subErr } = await supabase
       .from('submissions')
       .insert(insertRow)
-      .select('id, score, total_questions')
+      .select('id, score, total')
       .single()
 
     if (subErr) {
@@ -129,7 +129,7 @@ export async function POST(request) {
     if (!assessment.show_results) {
       return NextResponse.json({
         success: true, submissionId: sub.id,
-        score: sub.score, totalQuestions: sub.total_questions, correctCount,
+        score: sub.score, totalQuestions: sub.total, correctCount,
         showResults: false,
       })
     }
@@ -143,7 +143,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true, submissionId: sub.id,
-      score: sub.score, totalQuestions: sub.total_questions, correctCount,
+      score: sub.score, totalQuestions: sub.total, correctCount,
       showResults: true,
       questions:   fullQ ?? [],
       answers:     scoredAnswers,
