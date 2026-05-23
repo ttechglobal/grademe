@@ -1,14 +1,13 @@
 // src/app/api/submit/route.js
-import { NextResponse }  from 'next/server'
-import { createClient }  from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 
 // ── Scoring helpers ────────────────────────────────────────────────────────
-
 function scoreMCQ(question, studentAnswer) {
   if (!studentAnswer) return false
-  const correct = (question.correct_answer || question.answer || '').trim().toUpperCase()
-  const student  = String(studentAnswer).trim().toUpperCase()
-  return correct.charAt(0) === student.charAt(0)
+  const correct = (question.correct_answer || question.answer || '').trim().toUpperCase().charAt(0)
+  const student  = String(studentAnswer).trim().toUpperCase().charAt(0)
+  return correct === student && correct !== ''
 }
 
 function scoreTrueFalse(question, studentAnswer) {
@@ -20,167 +19,139 @@ function scoreTrueFalse(question, studentAnswer) {
 
 function scoreCalculation(question, studentBoxValues) {
   const template = question.answer_template
-  if (!template || !template.structure?.length) {
-    return { correct: false, boxResults: {} }
-  }
+  if (!template?.structure?.length) return { correct: false, boxResults: {} }
   const boxResults = {}
   let allCorrect   = true
   for (const item of template.structure) {
-    const studentVal   = (studentBoxValues?.[item.id] || '').trim().toLowerCase()
-    const accepted     = (item.accepted || [item.answer]).map((a) => String(a).trim().toLowerCase())
-    const isBoxCorrect = accepted.includes(studentVal)
-    boxResults[item.id] = isBoxCorrect ? 'correct' : 'wrong'
-    if (!isBoxCorrect) allCorrect = false
+    const sv  = (studentBoxValues?.[item.id] || '').trim().toLowerCase()
+    const acc = (item.accepted || [item.answer]).map((a) => String(a).trim().toLowerCase())
+    const ok  = acc.includes(sv)
+    boxResults[item.id] = ok ? 'correct' : 'wrong'
+    if (!ok) allCorrect = false
   }
   return { correct: allCorrect, boxResults }
 }
 
-// ── Route handler ──────────────────────────────────────────────────────────
-
+// ── POST handler ───────────────────────────────────────────────────────────
 export async function POST(request) {
   try {
     const body = await request.json()
-    const {
-      assessmentId,
-      studentName,
-      studentData,
-      answers,        // { [questionId]: string | { [boxId]: string } }
-      timeTakenSecs,
-    } = body
+    const { assessmentId, studentName, studentData, answers, timeTakenSecs } = body
 
-    if (!assessmentId || !studentName) {
+    if (!assessmentId || !studentName?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
     const supabase = await createClient()
 
-    // ── Fetch assessment ───────────────────────────────────────────────────
-    const { data: assessment, error: assessmentError } = await supabase
+    // Fetch assessment
+    const { data: assessment, error: aErr } = await supabase
       .from('assessments')
       .select('id, question_type, show_results, is_active')
       .eq('id', assessmentId)
       .single()
 
-    if (assessmentError || !assessment) {
+    if (aErr || !assessment) {
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 })
     }
-
     if (!assessment.is_active) {
       return NextResponse.json({ error: 'This assessment is no longer active' }, { status: 403 })
     }
 
-    // ── Fetch questions ────────────────────────────────────────────────────
-    const { data: questions, error: questionsError } = await supabase
+    // Fetch questions
+    const { data: questions, error: qErr } = await supabase
       .from('questions')
       .select('id, question_type, type, correct_answer, answer, options, answer_template')
       .eq('assessment_id', assessmentId)
       .order('order_index')
 
-    if (questionsError || !questions?.length) {
-      console.error('[submit] Questions fetch error:', questionsError)
-      return NextResponse.json({ error: 'No questions found for this assessment' }, { status: 404 })
+    if (qErr || !questions?.length) {
+      console.error('[submit] questions fetch:', qErr?.message)
+      return NextResponse.json({ error: 'No questions found' }, { status: 404 })
     }
 
-    // ── Server-side scoring ────────────────────────────────────────────────
-    let correctCount         = 0
+    // Score
+    let correctCount = 0
     const scoredAnswers      = {}
     const calculationResults = {}
 
-    for (const question of questions) {
-      // Resolve type — handle both column names and values
-      const qType         = question.question_type || question.type || assessment.question_type || 'mcq'
-      const studentAnswer = answers?.[question.id]
+    for (const q of questions) {
+      const qType = q.question_type || q.type || assessment.question_type || 'mcq'
+      const sa    = answers?.[q.id]
 
       if (qType === 'calculation') {
-        const boxValues = (typeof studentAnswer === 'object' && studentAnswer !== null) ? studentAnswer : {}
-        const { correct, boxResults } = scoreCalculation(question, boxValues)
+        const boxes = (typeof sa === 'object' && sa !== null) ? sa : {}
+        const { correct, boxResults } = scoreCalculation(q, boxes)
         if (correct) correctCount++
-        scoredAnswers[question.id]      = boxValues
-        calculationResults[question.id] = boxResults
+        scoredAnswers[q.id]      = boxes
+        calculationResults[q.id] = boxResults
       } else if (qType === 'true_false' || qType === 'truefalse') {
-        const isCorrect = scoreTrueFalse(question, studentAnswer)
-        if (isCorrect) correctCount++
-        scoredAnswers[question.id] = studentAnswer || ''
+        if (scoreTrueFalse(q, sa)) correctCount++
+        scoredAnswers[q.id] = sa || ''
       } else {
-        // MCQ default
-        const isCorrect = scoreMCQ(question, studentAnswer)
-        if (isCorrect) correctCount++
-        scoredAnswers[question.id] = studentAnswer || ''
+        if (scoreMCQ(q, sa)) correctCount++
+        scoredAnswers[q.id] = sa || ''
       }
     }
 
-    const totalQuestions = questions.length
-    const score          = totalQuestions > 0
-      ? Math.round((correctCount / totalQuestions) * 100 * 10) / 10
+    const score = questions.length > 0
+      ? Math.round((correctCount / questions.length) * 100 * 10) / 10
       : 0
 
-    // ── Build insert payload — only use columns that definitely exist ───────
-    // Do NOT include ip_address — it may not exist in all deployments
-    const insertPayload = {
-      assessment_id: assessmentId,
-      student_name:  studentName,
-      answers:       scoredAnswers,
+    // Build insert — ONLY columns that always exist, no ip_address
+    const insertRow = {
+      assessment_id:   assessmentId,
+      student_name:    studentName.trim(),
+      answers:         scoredAnswers,
       score,
-      total_questions: totalQuestions,
+      total_questions: questions.length,
       completed_at:    new Date().toISOString(),
     }
-
     // Only add optional fields if they have values
-    if (studentData && typeof studentData === 'object' && Object.keys(studentData).length > 0) {
-      insertPayload.student_data = studentData
-    }
-    if (typeof timeTakenSecs === 'number' && timeTakenSecs > 0) {
-      insertPayload.time_taken_secs = timeTakenSecs
-    }
+    if (studentData && Object.keys(studentData).length > 0) insertRow.student_data = studentData
+    if (typeof timeTakenSecs === 'number' && timeTakenSecs > 0) insertRow.time_taken_secs = timeTakenSecs
 
-    // ── Insert submission ──────────────────────────────────────────────────
-    const { data: submission, error: submissionError } = await supabase
+    const { data: sub, error: subErr } = await supabase
       .from('submissions')
-      .insert(insertPayload)
+      .insert(insertRow)
       .select('id, score, total_questions')
       .single()
 
-    if (submissionError) {
-      console.error('[submit] Insert error:', submissionError.message, submissionError.details)
+    if (subErr) {
+      console.error('[submit] insert error:', subErr.message, subErr.details, subErr.hint)
       return NextResponse.json(
-        { error: 'Failed to save submission', detail: submissionError.message },
+        { error: 'Failed to save submission', detail: subErr.message },
         { status: 500 }
       )
     }
 
-    // ── Build results payload ──────────────────────────────────────────────
+    // If show_results is off, just confirm success
     if (!assessment.show_results) {
       return NextResponse.json({
-        success:        true,
-        submissionId:   submission.id,
-        score:          submission.score,
-        totalQuestions: submission.total_questions,
-        correctCount,
-        showResults:    false,
+        success: true, submissionId: sub.id,
+        score: sub.score, totalQuestions: sub.total_questions, correctCount,
+        showResults: false,
       })
     }
 
-    // Fetch full questions for results display
-    const { data: fullQuestions } = await supabase
+    // Fetch full questions for result display
+    const { data: fullQ } = await supabase
       .from('questions')
       .select('id, text, question_text, question_type, type, options, correct_answer, answer, explanation, hint, answer_template, order_index')
       .eq('assessment_id', assessmentId)
       .order('order_index')
 
     return NextResponse.json({
-      success:            true,
-      submissionId:       submission.id,
-      score:              submission.score,
-      totalQuestions:     submission.total_questions,
-      correctCount,
-      showResults:        true,
-      questions:          fullQuestions ?? [],
-      answers:            scoredAnswers,
+      success: true, submissionId: sub.id,
+      score: sub.score, totalQuestions: sub.total_questions, correctCount,
+      showResults: true,
+      questions:   fullQ ?? [],
+      answers:     scoredAnswers,
       calculationResults,
     })
 
   } catch (err) {
-    console.error('[submit] Unexpected error:', err)
+    console.error('[submit] unexpected:', err)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
