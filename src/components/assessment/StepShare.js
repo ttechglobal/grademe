@@ -1,17 +1,37 @@
 'use client'
 
 import { useState } from 'react'
-import Button  from '@/components/ui/Button'
-import { Copy, CheckCheck, Eye, ExternalLink } from 'lucide-react'
+import { Copy, CheckCheck, Eye, ExternalLink, Share2 } from 'lucide-react'
 import { createAssessment } from '@/lib/actions/assessments'
-import { useToast } from '@/components/ui/ToastProvider'
-import { cn } from '@/lib/utils'
+import { useToast }         from '@/components/ui/ToastProvider'
 
 const PREVIEW_SESSION_KEY = 'grademee_preview_draft'
 
-export default function StepShare({ data, questions, source = 'manual', onBack, onFinish, useCaseProfile = 'k12_tutor' }) {
-  const { toast } = useToast()
-  const isUniversity = useCaseProfile === 'university'
+// ── Design tokens ──────────────────────────────────────────────────────────
+const C = {
+  bg:       '#f0f7f4',
+  white:    '#ffffff',
+  border:   '#e2ede8',
+  text:     '#1a1a1a',
+  secondary:'#4b5563',
+  muted:    '#9ca3af',
+  amber:    '#f5a623',
+  green:    '#16a34a',
+  greenBg:  '#dcfce7',
+  brand:    '#0f2e2e',
+}
+
+export default function StepShare({
+  data,
+  questions,
+  source          = 'manual',
+  onBack,
+  onFinish,
+  useCaseProfile  = 'k12_tutor',
+  questionType    = 'mcq',
+}) {
+  const { toast }          = useToast()
+  const isUniversity       = useCaseProfile === 'university'
 
   const [copied,  setCopied]  = useState(false)
   const [saving,  setSaving]  = useState(false)
@@ -19,37 +39,36 @@ export default function StepShare({ data, questions, source = 'manual', onBack, 
   const [slug,    setSlug]    = useState('')
   const [error,   setError]   = useState('')
 
-  // Assessment settings are fixed — show results and explanations always on.
-  // The "Assessment Settings" toggle section has been removed as it was redundant.
-  const settings = {
-    showResults:      true,
-    showExplanations: true,
-    requireName:      true,
-  }
+  const settings = { showResults: true, showExplanations: true, requireName: true }
 
   const shareUrl   = slug ? `${window.location.origin}/t/${slug}` : ''
   const previewUrl = slug ? `${shareUrl}?preview=1` : null
 
-  // ── Pre-save preview via sessionStorage ───────────────────────────────
+  // ── Pre-save preview ──────────────────────────────────────────────────
   const handlePreviewDraft = () => {
     try {
       const draft = {
-        title:       data.title || `${data.subject?.replace(/_/g, ' ')} ${data.assessmentType}`,
+        title:       data.title || `${(data.subject ?? '').replace(/_/g, ' ')} Assessment`,
         subject:     data.subject,
         class_level: data.classLevel,
         curriculum:  data.curriculum || 'uk',
-        questions:   questions.map((q, i) => ({
-          id:          `draft-${i}`,
-          type:        q.type ?? 'mcq',
-          text:        q.text,
-          options:     q.options ?? [],
-          answer:      q.answer,
-          hint:        q.hint        ?? '',
-          explanation: q.explanation ?? '',
-          order_index: i,
+        // FIX: normalise each question to always have `text` populated
+        // AI-generated questions may use q.question or q.question_text
+        questions: questions.map((q, i) => ({
+          id:            `draft-${i}`,
+          type:          q.type          ?? q.question_type ?? 'mcq',
+          question_type: q.question_type ?? q.type          ?? 'mcq',
+          // text is the canonical field PreviewMode reads — resolve from all variants
+          text:          q.text || q.question || q.question_text || '',
+          options:       Array.isArray(q.options) ? q.options : [],
+          answer:        q.answer        ?? q.correct_answer ?? '',
+          correct_answer:q.correct_answer ?? q.answer       ?? '',
+          hint:          q.hint          ?? '',
+          explanation:   q.explanation   ?? '',
+          order_index:   i,
         })),
         time_limit_mins: data.timeLimitMins ?? null,
-        is_active:       true,
+        is_active: true,
       }
       sessionStorage.setItem(PREVIEW_SESSION_KEY, JSON.stringify(draft))
       window.open('/preview-draft', '_blank')
@@ -62,11 +81,10 @@ export default function StepShare({ data, questions, source = 'manual', onBack, 
   const handleSave = async () => {
     setSaving(true)
     setError('')
-    // Pass the per-assessment curriculum through to createAssessment
     const result = await createAssessment(data, questions, settings, source)
     if (result.error) {
       setError(result.error)
-      toast({ message: 'Failed to save assessment. Please try again.', type: 'error' })
+      toast({ message: 'Failed to save. Please try again.', type: 'error' })
       setSaving(false)
       return
     }
@@ -77,170 +95,290 @@ export default function StepShare({ data, questions, source = 'manual', onBack, 
   }
 
   const copyLink = () => {
-    navigator.clipboard.writeText(shareUrl)
+    navigator.clipboard.writeText(shareUrl).catch(() => {
+      // Fallback for browsers that block clipboard
+      const el = document.createElement('textarea')
+      el.value = shareUrl
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    })
     setCopied(true)
-    toast({ message: 'Link copied!', type: 'success' })
     setTimeout(() => setCopied(false), 2500)
   }
 
-  // ── Pre-save ──────────────────────────────────────────────────────────
+  const shareWhatsApp = () => {
+    const text = encodeURIComponent(`Take my assessment: ${shareUrl}`)
+    window.open(`https://wa.me/?text=${text}`, '_blank')
+  }
+
+  const subject    = (data.subject ?? '').replace(/_/g, ' ')
+  const grade      = data.classLevel ?? ''
+  const qCount     = questions.length
+  const typeLabel  = questionType === 'true_false' ? 'True/False' : 'MCQ'
+
+  // ──────────────────────────────────────────────────────────────────────
+  // PRE-SAVE STATE
+  // ──────────────────────────────────────────────────────────────────────
   if (!saved) {
     return (
-      <div className="flex flex-col gap-6">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-        <div className="text-center">
-          <div className="text-4xl mb-3">📋</div>
-          <h2 className="font-display text-2xl font-bold text-ink mb-1">Almost ready!</h2>
-          <p className="text-sm text-ink-3 max-w-md mx-auto leading-relaxed">
-            You have <strong>{questions.length} question{questions.length !== 1 ? 's' : ''}</strong>.
-            Preview first to check for any issues, then save and share.
+        <div style={{ textAlign: 'center', paddingBottom: '8px' }}>
+          <div style={{ fontSize: '40px', marginBottom: '10px' }}>📋</div>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', color: C.text, margin: '0 0 6px' }}>
+            Almost ready!
+          </h2>
+          <p style={{ fontSize: '14px', color: C.muted, margin: 0 }}>
+            {qCount} question{qCount !== 1 ? 's' : ''} · {typeLabel}
+            {subject ? ` · ${subject}` : ''}
+            {grade ? ` · ${grade}` : ''}
           </p>
         </div>
 
-        {/* Preview button — prominent */}
+        {/* Preview button */}
         <button
           type="button"
           onClick={handlePreviewDraft}
-          disabled={questions.length === 0}
-          className="flex items-center gap-4 w-full p-5 bg-brand-50 border-2 border-brand-300 rounded-2xl
-                     hover:border-brand-500 hover:bg-brand-100/60 transition-all group text-left
-                     disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={qCount === 0}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '14px',
+            width: '100%', padding: '16px 20px',
+            backgroundColor: '#f0f7f4',
+            border: `2px solid ${C.border}`,
+            borderRadius: '12px', textAlign: 'left',
+            cursor: qCount === 0 ? 'not-allowed' : 'pointer',
+            opacity: qCount === 0 ? 0.5 : 1,
+            transition: 'border-color 0.12s',
+          }}
+          onMouseEnter={(e) => { if (qCount > 0) e.currentTarget.style.borderColor = C.brand }}
+          onMouseLeave={(e) => e.currentTarget.style.borderColor = C.border}
         >
-          <div className="w-12 h-12 rounded-xl bg-brand-800 flex items-center justify-center flex-shrink-0">
-            <Eye size={22} className="text-white" />
+          <div style={{
+            width: '44px', height: '44px', borderRadius: '10px',
+            backgroundColor: C.brand,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <Eye size={20} color="#fff" />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-brand-900 text-base leading-tight">
-              👁️ Preview Assessment
-              {questions.length > 0 && (
-                <span className="ml-2 text-sm font-semibold text-brand-600 bg-brand-100 px-2 py-0.5 rounded-full">
-                  {questions.length} question{questions.length !== 1 ? 's' : ''}
-                </span>
-              )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: '15px', fontWeight: '600', color: C.text, margin: '0 0 2px' }}>
+              Preview Assessment
             </p>
-            <p className="text-sm text-brand-700 mt-0.5 leading-relaxed">
-              See exactly what your students will see — questions, options, and layout.
-              Opens in a new tab. Nothing is saved yet.
+            <p style={{ fontSize: '13px', color: C.muted, margin: 0 }}>
+              See it exactly as students will. Opens in a new tab.
             </p>
           </div>
-          <ExternalLink size={17} className="text-brand-400 group-hover:text-brand-600 flex-shrink-0" />
+          <ExternalLink size={16} color={C.muted} style={{ flexShrink: 0 }} />
         </button>
 
-        {/* Summary — context-aware per profile */}
-        <div className="bg-surface border border-border rounded-2xl p-5">
-          <p className="text-xs font-bold uppercase tracking-widest text-ink-4 mb-3">Summary</p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            {(isUniversity ? (
-              // University summary: Course, Type, Questions, Time
-              [
-                {
-                  label: 'Course',
-                  value: data.classLevel
-                    ? data.classLevel.includes('__')
-                      ? data.classLevel.split('__').reverse().join(' — ')  // "Name — CODE"
-                      : data.classLevel
-                    : '—',
-                },
-                { label: 'Type',      value: data.assessmentType || '—' },
-                { label: 'Questions', value: questions.length },
-                {
-                  label: 'Time limit',
-                  value: data.timerEnabled && data.timeLimitMins
-                    ? `${data.timeLimitMins} min${data.timeLimitMins !== 1 ? 's' : ''}`
-                    : 'No limit',
-                },
-              ]
-            ) : (
-              // Tutor summary: Subject, Class, Type, Curriculum, Questions
-              [
-                { label: 'Subject',    value: data.subject?.replace(/_/g, ' ') || '—' },
-                { label: 'Class',      value: data.classLevel?.toUpperCase()   || '—' },
-                { label: 'Type',       value: data.assessmentType              || '—' },
-                { label: 'Curriculum', value: data.curriculum?.toUpperCase()   || '—' },
-                { label: 'Questions',  value: questions.length                        },
-              ]
-            )).map((row) => (
-              <div key={row.label} className="flex flex-col gap-0.5">
-                <span className="text-ink-4 text-xs">{row.label}</span>
-                <span className="font-semibold text-ink capitalize">{row.value}</span>
-              </div>
-            ))}
-          </div>
+        {/* Summary */}
+        <div style={{
+          backgroundColor: C.white, border: `1px solid ${C.border}`,
+          borderRadius: '12px', padding: '16px 20px',
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
+        }}>
+          {[
+            { label: 'Questions', value: qCount },
+            { label: 'Type',      value: typeLabel },
+            ...(subject ? [{ label: 'Subject', value: subject }] : []),
+            ...(grade   ? [{ label: isUniversity ? 'Course' : 'Grade', value: grade }] : []),
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <p style={{ fontSize: '11px', color: C.muted, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {label}
+              </p>
+              <p style={{ fontSize: '14px', fontWeight: '600', color: C.text, margin: 0 }}>
+                {value}
+              </p>
+            </div>
+          ))}
         </div>
 
         {error && (
-          <div className="bg-danger-light border border-danger/20 rounded-xl px-4 py-3 text-sm text-danger">
+          <p style={{ fontSize: '13px', color: '#dc2626', textAlign: 'center', margin: 0 }}>
             {error}
-          </div>
+          </p>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Button variant="ghost" onClick={onBack} className="sm:w-auto">← Back</Button>
-          <Button
-            variant="primary"
+        {qCount === 0 && (
+          <p style={{ fontSize: '13px', color: '#dc2626', textAlign: 'center', margin: 0 }}>
+            Add at least one question before saving.
+          </p>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '4px' }}>
+          <button
+            type="button"
             onClick={handleSave}
-            loading={saving}
-            disabled={saving || questions.length === 0}
-            className="flex-1"
+            disabled={saving || qCount === 0}
+            style={{
+              height: '48px', width: '100%', borderRadius: '10px',
+              backgroundColor: qCount === 0 ? C.muted : C.brand,
+              color: '#fff', fontSize: '15px', fontWeight: '600',
+              border: 'none', cursor: qCount === 0 || saving ? 'not-allowed' : 'pointer',
+              opacity: saving || qCount === 0 ? 0.7 : 1,
+              transition: 'opacity 0.12s',
+            }}
           >
             {saving ? 'Saving…' : 'Save & Get Link →'}
-          </Button>
+          </button>
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              height: '44px', width: '100%', borderRadius: '10px',
+              backgroundColor: 'transparent', color: C.secondary,
+              fontSize: '14px', fontWeight: '500',
+              border: `1px solid ${C.border}`, cursor: 'pointer',
+            }}
+          >
+            ← Back to Questions
+          </button>
         </div>
-
-        {questions.length === 0 && (
-          <p className="text-xs text-center text-danger">Add at least one question before saving.</p>
-        )}
       </div>
     )
   }
 
-  // ── Post-save ─────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────
+  // POST-SAVE STATE — fully mobile responsive
+  // ──────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-      <div className="text-center py-4">
-        <div className="text-5xl mb-3">🎉</div>
-        <h2 className="font-display text-2xl font-bold text-ink mb-2">Assessment Ready!</h2>
-        <p className="text-sm text-ink-3">Share the link below with your students.</p>
+      {/* Success header */}
+      <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
+        <div style={{
+          width: '56px', height: '56px', borderRadius: '50%',
+          backgroundColor: C.greenBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 12px',
+        }}>
+          <span style={{ fontSize: '26px' }}>✓</span>
+        </div>
+        <h2 style={{ fontSize: '20px', fontWeight: '600', color: C.text, margin: '0 0 6px' }}>
+          Assessment created!
+        </h2>
+        <p style={{ fontSize: '13px', color: C.muted, margin: 0 }}>
+          {subject && `${subject} · `}
+          {grade && `${grade} · `}
+          {qCount} question{qCount !== 1 ? 's' : ''}
+        </p>
       </div>
 
-      {/* Share link */}
-      <div className="bg-white border border-border rounded-2xl p-5 flex flex-col gap-3">
-        <p className="text-xs font-bold uppercase tracking-widest text-ink-4">Student Link</p>
-        <div className="flex items-center gap-2 bg-surface rounded-xl px-4 py-3 border border-border">
-          <span className="flex-1 text-sm text-brand-600 font-medium truncate">{shareUrl}</span>
+      {/* Share link card */}
+      <div style={{
+        backgroundColor: C.white, border: `1px solid ${C.border}`,
+        borderRadius: '12px', padding: '18px 20px',
+        display: 'flex', flexDirection: 'column', gap: '10px',
+      }}>
+        <p style={{ fontSize: '13px', fontWeight: '500', color: C.secondary, margin: 0 }}>
+          Share this link with your students
+        </p>
+
+        {/* Link display — truncated, no overflow */}
+        <div style={{
+          backgroundColor: C.bg, border: `1px solid ${C.border}`,
+          borderRadius: '8px', padding: '12px 14px',
+          fontFamily: 'monospace', fontSize: '13px', color: C.brand,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          width: '100%', boxSizing: 'border-box',
+        }}>
+          {shareUrl}
+        </div>
+
+        {/* Copy button — full width on mobile */}
+        <button
+          type="button"
+          onClick={copyLink}
+          style={{
+            height: '44px', width: '100%', borderRadius: '8px',
+            backgroundColor: copied ? C.green : C.amber,
+            color: '#fff', fontSize: '14px', fontWeight: '600',
+            border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            transition: 'background-color 0.2s',
+          }}
+        >
+          {copied ? <><CheckCheck size={16} /> Copied ✓</> : <><Copy size={16} /> Copy Link</>}
+        </button>
+      </div>
+
+      {/* Share via row */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <p style={{ fontSize: '13px', color: C.muted, margin: 0 }}>Share via</p>
+        <div style={{ display: 'flex', gap: '10px' }}>
           <button
-            onClick={copyLink}
-            className="flex items-center gap-1.5 bg-brand-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors flex-shrink-0"
+            type="button"
+            onClick={shareWhatsApp}
+            style={{
+              flex: 1, height: '44px', borderRadius: '8px',
+              backgroundColor: C.white,
+              border: '2px solid #16a34a', color: '#16a34a',
+              fontSize: '14px', fontWeight: '600',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+              cursor: 'pointer',
+            }}
           >
-            {copied ? <CheckCheck size={13} /> : <Copy size={13} />}
-            {copied ? 'Copied!' : 'Copy'}
+            <span style={{ fontSize: '16px' }}>💬</span> WhatsApp
+          </button>
+          <button
+            type="button"
+            onClick={copyLink}
+            style={{
+              flex: 1, height: '44px', borderRadius: '8px',
+              backgroundColor: C.white,
+              border: `2px solid ${C.border}`, color: C.secondary,
+              fontSize: '14px', fontWeight: '600',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+              cursor: 'pointer',
+            }}
+          >
+            <Copy size={15} /> Copy Link
           </button>
         </div>
       </div>
 
-      {/* Preview with real slug */}
-      {previewUrl && (
-        <a
-          href={previewUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-4 p-5 bg-brand-50 border-2 border-brand-200 rounded-2xl hover:border-brand-400 hover:bg-brand-100/60 transition-all group"
+      {/* Action buttons — stacked, full width */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {previewUrl && (
+          <a
+            href={previewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              height: '44px', width: '100%', borderRadius: '8px',
+              backgroundColor: C.white,
+              border: `1px solid ${C.border}`, color: C.secondary,
+              fontSize: '14px', fontWeight: '600',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+              textDecoration: 'none', boxSizing: 'border-box',
+            }}
+          >
+            <Eye size={15} /> Preview Assessment
+          </a>
+        )}
+        <button
+          type="button"
+          onClick={onFinish}
+          style={{
+            height: '48px', width: '100%', borderRadius: '8px',
+            backgroundColor: C.amber, color: '#fff',
+            fontSize: '15px', fontWeight: '600',
+            border: 'none', cursor: 'pointer',
+          }}
         >
-          <div className="w-11 h-11 rounded-xl bg-brand-800 flex items-center justify-center flex-shrink-0">
-            <Eye size={20} className="text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-brand-900 text-sm">👁️ Preview Assessment</p>
-            <p className="text-xs text-brand-600 mt-0.5">
-              See exactly what your students will see. Nothing is recorded.
-            </p>
-          </div>
-          <ExternalLink size={15} className="text-brand-400 group-hover:text-brand-600 flex-shrink-0" />
-        </a>
-      )}
+          Go to Dashboard →
+        </button>
+      </div>
 
-      <Button variant="primary" onClick={onFinish}>Go to Assessments →</Button>
+      {/* Bottom note */}
+      <p style={{ fontSize: '12px', color: C.muted, textAlign: 'center', margin: 0, lineHeight: 1.5 }}>
+        Students don't need an account to take this assessment
+      </p>
+
     </div>
   )
 }

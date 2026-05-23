@@ -1,19 +1,19 @@
 // src/app/api/submit/route.js
-import { createClient } from '@/lib/supabase/server'
 import { NextResponse }  from 'next/server'
+import { createClient }  from '@/lib/supabase/server'
 
-// ─── SCORING HELPERS ──────────────────────────────────────────────────────────
+// ── Scoring helpers ────────────────────────────────────────────────────────
 
 function scoreMCQ(question, studentAnswer) {
   if (!studentAnswer) return false
-  const correct = (question.answer || '').trim().toUpperCase()[0]
-  const student  = String(studentAnswer).trim().toUpperCase()[0]
-  return correct === student
+  const correct = (question.correct_answer || question.answer || '').trim().toUpperCase()
+  const student  = String(studentAnswer).trim().toUpperCase()
+  return correct.charAt(0) === student.charAt(0)
 }
 
 function scoreTrueFalse(question, studentAnswer) {
   if (!studentAnswer) return false
-  const correct = /^true/i.test(question.answer || '') ? 'true' : 'false'
+  const correct = /^true/i.test(question.correct_answer || question.answer || '') ? 'true' : 'false'
   const student  = /^true/i.test(String(studentAnswer)) ? 'true' : 'false'
   return correct === student
 }
@@ -35,18 +35,7 @@ function scoreCalculation(question, studentBoxValues) {
   return { correct: allCorrect, boxResults }
 }
 
-function scoreStepwise(question, studentFilled) {
-  const steps  = question.steps ?? []
-  const blanks = steps.filter((s) => s.is_blank)
-  if (!blanks.length) return false
-  const filled = (typeof studentFilled === 'object' && studentFilled !== null) ? studentFilled : {}
-  return blanks.every((s) => {
-    const sv = (filled[s.id] ?? '').trim().toLowerCase()
-    return sv === (s.answer ?? '').trim().toLowerCase()
-  })
-}
-
-// ─── ROUTE HANDLER ────────────────────────────────────────────────────────────
+// ── Route handler ──────────────────────────────────────────────────────────
 
 export async function POST(request) {
   try {
@@ -55,8 +44,7 @@ export async function POST(request) {
       assessmentId,
       studentName,
       studentData,
-      answers,       // { [questionId]: string | { [boxId]: string } | { [stepId]: string } }
-      sessionKey,
+      answers,        // { [questionId]: string | { [boxId]: string } }
       timeTakenSecs,
     } = body
 
@@ -84,13 +72,13 @@ export async function POST(request) {
     // ── Fetch questions ────────────────────────────────────────────────────
     const { data: questions, error: questionsError } = await supabase
       .from('questions')
-      .select('id, type, question_type, answer, options, answer_template, steps')
+      .select('id, question_type, type, correct_answer, answer, options, answer_template')
       .eq('assessment_id', assessmentId)
       .order('order_index')
 
     if (questionsError || !questions?.length) {
       console.error('[submit] Questions fetch error:', questionsError)
-      return NextResponse.json({ error: 'No questions found' }, { status: 404 })
+      return NextResponse.json({ error: 'No questions found for this assessment' }, { status: 404 })
     }
 
     // ── Server-side scoring ────────────────────────────────────────────────
@@ -99,31 +87,22 @@ export async function POST(request) {
     const calculationResults = {}
 
     for (const question of questions) {
+      // Resolve type — handle both column names and values
       const qType         = question.question_type || question.type || assessment.question_type || 'mcq'
       const studentAnswer = answers?.[question.id]
 
       if (qType === 'calculation') {
-        const boxValues = (typeof studentAnswer === 'object' && studentAnswer !== null)
-          ? studentAnswer : {}
+        const boxValues = (typeof studentAnswer === 'object' && studentAnswer !== null) ? studentAnswer : {}
         const { correct, boxResults } = scoreCalculation(question, boxValues)
         if (correct) correctCount++
         scoredAnswers[question.id]      = boxValues
         calculationResults[question.id] = boxResults
-
       } else if (qType === 'true_false' || qType === 'truefalse') {
         const isCorrect = scoreTrueFalse(question, studentAnswer)
         if (isCorrect) correctCount++
         scoredAnswers[question.id] = studentAnswer || ''
-
-      } else if (qType === 'stepwise') {
-        const filled = (typeof studentAnswer === 'object' && studentAnswer !== null)
-          ? studentAnswer : {}
-        const isCorrect = scoreStepwise(question, filled)
-        if (isCorrect) correctCount++
-        scoredAnswers[question.id] = filled
-
       } else {
-        // MCQ (default)
+        // MCQ default
         const isCorrect = scoreMCQ(question, studentAnswer)
         if (isCorrect) correctCount++
         scoredAnswers[question.id] = studentAnswer || ''
@@ -132,32 +111,41 @@ export async function POST(request) {
 
     const totalQuestions = questions.length
     const score          = totalQuestions > 0
-      ? Math.round((correctCount / totalQuestions) * 100)
+      ? Math.round((correctCount / totalQuestions) * 100 * 10) / 10
       : 0
 
-    // ── Insert submission ──────────────────────────────────────────────────
+    // ── Build insert payload — only use columns that definitely exist ───────
+    // Do NOT include ip_address — it may not exist in all deployments
     const insertPayload = {
       assessment_id: assessmentId,
       student_name:  studentName,
       answers:       scoredAnswers,
       score,
-      total:         totalQuestions,
-      completed_at:  new Date().toISOString(),
+      total_questions: totalQuestions,
+      completed_at:    new Date().toISOString(),
     }
 
-    if (studentData && typeof studentData === 'object') {
+    // Only add optional fields if they have values
+    if (studentData && typeof studentData === 'object' && Object.keys(studentData).length > 0) {
       insertPayload.student_data = studentData
     }
+    if (typeof timeTakenSecs === 'number' && timeTakenSecs > 0) {
+      insertPayload.time_taken_secs = timeTakenSecs
+    }
 
+    // ── Insert submission ──────────────────────────────────────────────────
     const { data: submission, error: submissionError } = await supabase
       .from('submissions')
       .insert(insertPayload)
-      .select('id, score, total')
+      .select('id, score, total_questions')
       .single()
 
     if (submissionError) {
-      console.error('[submit] Insert error:', submissionError.message)
-      return NextResponse.json({ error: 'Failed to save submission' }, { status: 500 })
+      console.error('[submit] Insert error:', submissionError.message, submissionError.details)
+      return NextResponse.json(
+        { error: 'Failed to save submission', detail: submissionError.message },
+        { status: 500 }
+      )
     }
 
     // ── Build results payload ──────────────────────────────────────────────
@@ -166,16 +154,16 @@ export async function POST(request) {
         success:        true,
         submissionId:   submission.id,
         score:          submission.score,
-        totalQuestions: submission.total,
+        totalQuestions: submission.total_questions,
         correctCount,
         showResults:    false,
       })
     }
 
-    // Fetch full questions for results display — only columns that exist
+    // Fetch full questions for results display
     const { data: fullQuestions } = await supabase
       .from('questions')
-      .select('id, type, question_type, text, options, answer, explanation, hint, answer_template, steps, word_bank, order_index')
+      .select('id, text, question_text, question_type, type, options, correct_answer, answer, explanation, hint, answer_template, order_index')
       .eq('assessment_id', assessmentId)
       .order('order_index')
 
@@ -183,10 +171,10 @@ export async function POST(request) {
       success:            true,
       submissionId:       submission.id,
       score:              submission.score,
-      totalQuestions:     submission.total,
+      totalQuestions:     submission.total_questions,
       correctCount,
       showResults:        true,
-      questions:          fullQuestions || [],
+      questions:          fullQuestions ?? [],
       answers:            scoredAnswers,
       calculationResults,
     })
