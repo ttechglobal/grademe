@@ -1,5 +1,16 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { NextResponse }                    from 'next/server'
+import { createClient }                    from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
+
+// Service role client — bypasses RLS for the submission insert
+// Students are unauthenticated so the anon client can fail RLS checks
+function adminClient() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 export async function POST(request) {
   try {
@@ -30,7 +41,7 @@ export async function POST(request) {
     // Fetch questions for scoring
     const { data: questions, error: qErr } = await supabase
       .from('questions')
-      .select('id, question_type, type, correct_answer, answer, options, answer_template')
+      .select('id, question_type, type, answer, options, answer_template')
       .eq('assessment_id', assessmentId)
       .order('order_index')
 
@@ -49,12 +60,12 @@ export async function POST(request) {
       scoredAnswers[q.id] = sa || ''
 
       if (qType === 'true_false' || qType === 'truefalse') {
-        const correct = /^true/i.test(q.correct_answer || q.answer || '') ? 'true' : 'false'
+        const correct = /^true/i.test(q.answer || '') ? 'true' : 'false'
         const student  = /^true/i.test(String(sa || '')) ? 'true' : 'false'
         if (correct === student && sa) correctCount++
       } else {
         // MCQ
-        const correct = (q.correct_answer || q.answer || '').trim().toUpperCase().charAt(0)
+        const correct = (q.answer || '').trim().toUpperCase().charAt(0)
         const student  = String(sa || '').trim().toUpperCase().charAt(0)
         if (correct && correct === student) correctCount++
       }
@@ -77,7 +88,9 @@ export async function POST(request) {
     if (timeTakenSecs > 0) insertRow.time_taken_secs = timeTakenSecs
     if (studentData && Object.keys(studentData).length > 0) insertRow.student_data = studentData
 
-    const { data: sub, error: subErr } = await supabase
+    // Use service role for insert — student has no session (anon client can fail RLS)
+    const admin = adminClient()
+    const { data: sub, error: subErr } = await admin
       .from('submissions')
       .insert(insertRow)
       .select('id, score, total')
@@ -91,7 +104,7 @@ export async function POST(request) {
     // Fetch full questions for results display
     const { data: fullQ } = await supabase
       .from('questions')
-      .select('id, text, question_text, question_type, type, options, correct_answer, answer, explanation, hint, order_index')
+      .select('id, text, question_text, question_type, type, options, answer, explanation, hint, order_index')
       .eq('assessment_id', assessmentId)
       .order('order_index')
 
